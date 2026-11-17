@@ -305,3 +305,70 @@ def test_masking_filter_preserves_arg_tuple_shape():
     assert "0x<redacted>" in formatted
     assert len(record.args) == 5
     assert mask_secrets("x") == "x"
+
+
+class SequencedTransport:
+    def __init__(self, responses) -> None:
+        self.responses = list(responses)
+        self.payloads: list[dict] = []
+
+    def post(self, path: str, payload: dict):
+        self.payloads.append(payload)
+        return self.responses.pop(0)
+
+
+def test_invalid_nonce_resets_and_resigns_once():
+    transport = SequencedTransport(
+        [
+            {"status": "err", "response": "Invalid nonce"},
+            {"status": "ok", "response": {"type": "default"}},
+        ]
+    )
+    clock = SteppingClock()
+    signer = make_signer(NonceSource(clock_ms=clock))
+    client = ExchangeClient(signer, transport)
+
+    response = client.place_ioc(
+        asset=0, is_buy=True, size=Decimal("1"), price=Decimal("1"), reduce_only=False
+    )
+
+    assert response.ok is True
+    assert len(transport.payloads) == 2
+    assert transport.payloads[0]["nonce"] != transport.payloads[1]["nonce"]
+    assert transport.payloads[1]["nonce"] == transport.payloads[0]["nonce"] + 1
+
+
+def test_invalid_nonce_retries_only_once():
+    transport = SequencedTransport(
+        [
+            {"status": "err", "response": "Invalid nonce"},
+            {"status": "err", "response": "Invalid nonce"},
+            {"status": "ok", "response": {"type": "default"}},
+        ]
+    )
+    client = ExchangeClient(make_signer(), transport)
+
+    response = client.place_ioc(
+        asset=0, is_buy=True, size=Decimal("1"), price=Decimal("1"), reduce_only=False
+    )
+
+    assert response.ok is False
+    assert response.category == "invalid_nonce"
+    assert len(transport.payloads) == 2
+
+
+def test_explicit_nonce_is_not_retried():
+    transport = SequencedTransport([{"status": "err", "response": "Invalid nonce"}])
+    client = ExchangeClient(make_signer(), transport)
+
+    response = client.place_ioc(
+        asset=0,
+        is_buy=True,
+        size=Decimal("1"),
+        price=Decimal("1"),
+        reduce_only=False,
+        nonce=7,
+    )
+
+    assert response.ok is False
+    assert len(transport.payloads) == 1

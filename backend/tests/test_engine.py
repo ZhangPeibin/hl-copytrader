@@ -753,3 +753,66 @@ def test_close_task_skips_flat_positions(settings):
 
     assert exchange.calls == []
     assert logs(settings) == []
+
+
+def test_duplicate_cloid_is_treated_as_success(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange(
+        ExchangeResponse(ok=False, raw={}, error="Duplicate cloid", category="duplicate_cloid")
+    )
+
+    make_engine(settings, info, exchange).reconcile_all(source="start")
+
+    row = logs(settings)[0]
+    assert row["result"] == "filled"
+    assert row["raw"] is None
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None and state.fail_count == 0
+
+
+def test_unauthorized_agent_stops_the_task(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange(
+        ExchangeResponse(
+            ok=False,
+            raw={},
+            error="User or API Wallet does not exist",
+            category="agent_unauthorized",
+        )
+    )
+
+    make_engine(settings, info, exchange).reconcile_all(source="start")
+
+    with db.session(settings.db_path) as conn:
+        assert db.get_task(conn, task.id).status == "stopped"
+    assert logs(settings)[0]["result"] == "failed"
+
+    exchange.calls.clear()
+    make_engine(settings, info, exchange).reconcile_all(source="reconcile")
+    assert exchange.calls == []
+
+
+def test_restart_replays_running_tasks_with_the_same_cloid(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange()
+
+    make_engine(settings, info, exchange).reconcile_all(source="start")
+    first_cloid = exchange.calls[-1][1]["cloid"]
+    assert [call[0] for call in exchange.calls] == ["leverage", "order"]
+
+    restart_exchange = FakeExchange()
+    restarted = Engine(settings, info, exchange_factory=lambda wallet: restart_exchange)
+    restarted.reconcile_all(source="start")
+
+    assert [call[0] for call in restart_exchange.calls] == ["order"]
+    assert restart_exchange.calls[0][1]["cloid"] == first_cloid

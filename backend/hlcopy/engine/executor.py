@@ -45,6 +45,8 @@ def _record_failure(conn, ctx: ExecutionContext, response: ExchangeResponse) -> 
         error=_raw_text(response) or "order rejected",
         next_retry_at=ctx.now_ms + backoff_ms(fail_count),
     )
+    if response.category == "agent_unauthorized":
+        db.set_task_status(conn, ctx.task_id, "stopped")
 
 
 def _raw_text(response: ExchangeResponse) -> str | None:

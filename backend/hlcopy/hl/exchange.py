@@ -62,6 +62,10 @@ class NonceSource:
             self._last = value
             return value
 
+    def reset(self) -> None:
+        with self._lock:
+            self._last = self._clock_ms()
+
 
 class WalletSigner:
     def __init__(
@@ -153,6 +157,13 @@ class ExchangeClient:
         self.is_mainnet = signer.network == "mainnet"
 
     def _submit(self, action: dict[str, Any], nonce: int | None = None) -> ExchangeResponse:
+        response = self._send(action, nonce)
+        if nonce is None and not response.ok and response.category == "invalid_nonce":
+            self.signer.nonce.reset()
+            response = self._send(action, None)
+        return response
+
+    def _send(self, action: dict[str, Any], nonce: int | None) -> ExchangeResponse:
         value = nonce if nonce is not None else self.signer.nonce.next()
         signature = sign_l1_action(
             self.signer.account,

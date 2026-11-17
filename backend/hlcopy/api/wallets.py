@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from fastapi import APIRouter, HTTPException, status
+from decimal import Decimal
+
+from fastapi import APIRouter, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from hlcopy import crypto, db
@@ -14,6 +16,8 @@ from hlcopy.addresses import (
     verify_key_matches,
 )
 from hlcopy.api.deps import SettingsDep
+from hlcopy.api.errors import fail as _fail
+from hlcopy.hl.errors import HlError
 
 router = APIRouter(prefix="/api/wallets", tags=["wallets"])
 
@@ -36,6 +40,37 @@ class WalletUpdate(BaseModel):
     private_key: str | None = None
 
 
+class PositionOut(BaseModel):
+    coin: str
+    size: str
+    entry_px: str | None
+    position_value: str
+    unrealized_pnl: str
+    leverage: int
+    is_cross: bool
+    liquidation_px: str | None
+
+
+class OrderOut(BaseModel):
+    coin: str
+    oid: int
+    side: str
+    price: str
+    size: str
+    reduce_only: bool
+    ts: int
+
+
+class AccountOut(BaseModel):
+    address: str
+    account_value: str
+    withdrawable: str
+    margin_used: str
+    positions: list[PositionOut]
+    open_orders: list[OrderOut]
+    fetched_at_ms: int
+
+
 class WalletOut(BaseModel):
     id: int
     name: str
@@ -44,10 +79,6 @@ class WalletOut(BaseModel):
     key_state: str
     created_at: int
     updated_at: int
-
-
-def _fail(status_code: int, code: str, message: str) -> None:
-    raise HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
 def _name(raw: str) -> str:
@@ -201,3 +232,62 @@ def delete_wallet(wallet_id: int, settings: SettingsDep) -> None:
         if db.wallet_task_count(conn, wallet_id) > 0:
             _fail(409, "wallet_in_use", "delete this wallet's tasks first")
         db.delete_wallet(conn, wallet_id)
+
+
+def _dec(value: Decimal | None) -> str | None:
+    return None if value is None else format(value, "f")
+
+
+@router.get("/{wallet_id}", response_model=WalletOut)
+def get_wallet(wallet_id: int, settings: SettingsDep) -> WalletOut:
+    with db.session(settings.db_path) as conn:
+        record = db.get_wallet(conn, wallet_id)
+    if record is None:
+        _fail(404, "wallet_not_found", "wallet does not exist")
+    return _out(record)
+
+
+@router.get("/{wallet_id}/account", response_model=AccountOut)
+def get_account(wallet_id: int, request: Request, settings: SettingsDep) -> AccountOut:
+    with db.session(settings.db_path) as conn:
+        record = db.get_wallet(conn, wallet_id)
+    if record is None:
+        _fail(404, "wallet_not_found", "wallet does not exist")
+
+    try:
+        snapshot = request.app.state.info.account(record.address)
+    except HlError as exc:
+        _fail(502, exc.code, exc.message)
+
+    return AccountOut(
+        address=snapshot.address,
+        account_value=_dec(snapshot.account_value),
+        withdrawable=_dec(snapshot.withdrawable),
+        margin_used=_dec(snapshot.margin_used),
+        positions=[
+            PositionOut(
+                coin=position.coin,
+                size=_dec(position.size),
+                entry_px=_dec(position.entry_px),
+                position_value=_dec(position.position_value),
+                unrealized_pnl=_dec(position.unrealized_pnl),
+                leverage=position.leverage,
+                is_cross=position.is_cross,
+                liquidation_px=_dec(position.liquidation_px),
+            )
+            for position in snapshot.positions
+        ],
+        open_orders=[
+            OrderOut(
+                coin=order.coin,
+                oid=order.oid,
+                side=order.side,
+                price=_dec(order.price),
+                size=_dec(order.size),
+                reduce_only=order.reduce_only,
+                ts=order.ts,
+            )
+            for order in snapshot.open_orders
+        ],
+        fetched_at_ms=snapshot.fetched_at_ms,
+    )

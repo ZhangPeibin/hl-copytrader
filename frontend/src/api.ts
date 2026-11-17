@@ -98,3 +98,57 @@ export function updateWallet(id: number, payload: Partial<WalletPayload>): Promi
 export function deleteWallet(id: number): Promise<void> {
   return request<void>(`/api/wallets/${id}`, { method: "DELETE" });
 }
+
+export type CoinMeta = {
+  name: string;
+  sz_decimals: number;
+  max_leverage: number;
+};
+
+export type Meta = {
+  coins: CoinMeta[];
+  fetched_at_ms: number;
+};
+
+export type Position = {
+  coin: string;
+  size: string;
+  entry_px: string | null;
+  position_value: string;
+  unrealized_pnl: string;
+  leverage: number;
+  is_cross: boolean;
+  liquidation_px: string | null;
+};
+
+export type OpenOrder = {
+  coin: string;
+  oid: number;
+  side: string;
+  price: string;
+  size: string;
+  reduce_only: boolean;
+  ts: number;
+};
+
+export type Account = {
+  address: string;
+  account_value: string;
+  withdrawable: string;
+  margin_used: string;
+  positions: Position[];
+  open_orders: OpenOrder[];
+  fetched_at_ms: number;
+};
+
+export function fetchWallet(id: number): Promise<Wallet> {
+  return request<Wallet>(`/api/wallets/${id}`);
+}
+
+export function fetchAccount(id: number): Promise<Account> {
+  return request<Account>(`/api/wallets/${id}/account`);
+}
+
+export function fetchMeta(): Promise<Meta> {
+  return request<Meta>("/api/meta");
+}

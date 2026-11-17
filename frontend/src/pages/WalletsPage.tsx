@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import {
   createWallet,
@@ -209,7 +210,9 @@ export default function WalletsPage() {
               <tbody>
                 {wallets.map((wallet) => (
                   <tr key={wallet.id}>
-                    <td>{wallet.name}</td>
+                    <td>
+                      <Link to={`/wallets/${wallet.id}`}>{wallet.name}</Link>
+                    </td>
                     <td className="mono" title={wallet.address}>
                       {wallet.address}
                     </td>
@@ -222,6 +225,9 @@ export default function WalletsPage() {
                       </span>
                     </td>
                     <td className="actions">
+                      <Link className="link" to={`/wallets/${wallet.id}`}>
+                        详情
+                      </Link>
                       <button type="button" className="link" onClick={() => startEdit(wallet)}>
                         编辑
                       </button>

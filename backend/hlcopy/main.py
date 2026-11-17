@@ -11,9 +11,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from hlcopy import db
-from hlcopy.api import health, wallets
+from hlcopy.api import health, meta, wallets
 from hlcopy.config import ConfigError, Settings, load_settings
 from hlcopy.engine.state import EngineState, WsState
+from hlcopy.hl.info import HlInfoClient
 from hlcopy.security import BasicSessionMiddleware
 
 VERSION = "0.1.0"
@@ -29,7 +30,7 @@ or use <code>make dev</code>.</p>
 """
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, info_client: HlInfoClient | None = None) -> FastAPI:
     if settings is None:
         try:
             settings = load_settings()
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine_state = EngineState()
     app.state.ws_state = WsState()
+    app.state.info = info_client or HlInfoClient(settings.hl_network)
 
     if settings.app_password:
         app.add_middleware(
@@ -71,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(wallets.router)
+    app.include_router(meta.router)
     _mount_frontend(app, settings.static_dir)
     return app
 

@@ -298,3 +298,52 @@ tr:last-child td {
   color: #2b1a05;
   background: var(--warn);
 }
+
+.back {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.back a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+td.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+td.long,
+.long {
+  color: var(--ok);
+}
+
+td.short,
+.short {
+  color: #f08a8a;
+}
+
+a.link {
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.link.inline {
+  margin-left: 10px;
+}
+
+.mono.inline {
+  max-width: none;
+  display: inline;
+  font-size: 12px;
+}

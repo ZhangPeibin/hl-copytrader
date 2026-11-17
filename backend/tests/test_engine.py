@@ -47,6 +47,7 @@ class FakeInfo:
         self.follower_positions = follower_positions
         self.fail_accounts = fail_accounts
         self.fail_for: set[str] = set()
+        self.positions_extra: list[Position] = []
 
     def meta(self) -> Meta:
         return Meta(
@@ -64,7 +65,7 @@ class FakeInfo:
         if self.fail_accounts or address.lower() in self.fail_for:
             raise HlError("leader state unavailable")
         if address.lower() == self.leader.lower():
-            return snapshot(address, self.leader_positions)
+            return snapshot(address, [*self.leader_positions, *self.positions_extra])
         return snapshot(address, self.follower_positions)
 
 
@@ -498,3 +499,65 @@ def test_add_reduce_and_close_converge(settings):
     _, close = exchange.calls[-1]
     assert close["size"] == Decimal("0.5")
     assert close["reduce_only"] is True
+
+
+def test_submit_fill_dedupes_pending_leaders(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader)
+    engine = make_engine(settings, FakeInfo(leader, [], []), FakeExchange())
+
+    assert engine.submit_fill(leader, "BTC", 1_000) is True
+    assert engine.submit_fill(leader, "BTC", 1_100) is False
+    assert engine.state.queue_depth == 1
+    assert engine.submit_fill(leader, "ETH", 1_200) is True
+    assert engine.state.queue_depth == 2
+
+
+def test_apply_fill_reconciles_every_task_following_the_leader(settings):
+    leader = Account.create().address
+    wallet_a = add_wallet(settings)
+    wallet_b = add_wallet(settings)
+    task_a = add_task(settings, wallet_a, leader)
+    task_b = add_task(settings, wallet_b, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange()
+    clock = Clock()
+    engine = Engine(
+        settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock
+    )
+
+    engine.apply_fill(leader, "BTC", clock.value - 1_500)
+
+    rows = logs(settings)
+    assert {row["task_id"] for row in rows} == {task_a.id, task_b.id}
+    assert all(row["source"] == "fill" for row in rows)
+    assert all(row["latency_ms"] == 1_500 for row in rows)
+
+
+def test_apply_fill_only_reconciles_the_filled_coin(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader, ratio="1", max_notional="1000000")
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    info.positions_extra = [position("ETH", "2")]
+    exchange = FakeExchange()
+    clock = Clock()
+    engine = Engine(settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock)
+
+    engine.apply_fill(leader, "BTC", clock.value)
+
+    orders = [call[1]["asset"] for call in exchange.calls if call[0] == "order"]
+    assert orders == [0]
+
+
+def test_apply_fill_ignores_paused_tasks(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader, status="paused")
+    exchange = FakeExchange()
+    engine = make_engine(settings, FakeInfo(leader, [position("BTC", "1")], []), exchange)
+
+    engine.apply_fill(leader, "BTC", 1)
+
+    assert exchange.calls == []

@@ -17,6 +17,7 @@ from hlcopy.engine.loop import Engine
 from hlcopy.engine.state import EngineState, WsState
 from hlcopy.masking import install_masking
 from hlcopy.hl.info import HlInfoClient
+from hlcopy.hl.ws import WsManager
 from hlcopy.security import BasicSessionMiddleware
 
 VERSION = "0.1.0"
@@ -64,6 +65,7 @@ def create_app(
         yield
         if start_engine:
             app.state.engine.stop()
+        app.state.ws.stop()
 
     app = FastAPI(title="HL Copytrader", version=VERSION, lifespan=lifespan)
     app.state.settings = settings
@@ -72,6 +74,13 @@ def create_app(
     app.state.info = info_client or HlInfoClient(settings.hl_network)
     app.state.engine = engine or Engine(settings, app.state.info)
     app.state.engine_state = app.state.engine.state
+    app.state.ws = WsManager(
+        settings.hl_network,
+        on_fill=app.state.engine.submit_fill,
+        backfill=lambda leader, since: app.state.info.fills_by_time(leader, since),
+    )
+    app.state.engine.attach_ws(app.state.ws)
+    app.state.ws_state = app.state.ws.state
 
     if settings.app_password:
         app.add_middleware(

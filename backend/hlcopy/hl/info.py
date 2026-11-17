@@ -16,6 +16,11 @@ BASE_URLS = {
     "testnet": "https://api.hyperliquid-testnet.xyz",
 }
 
+WS_URLS = {
+    "mainnet": "wss://api.hyperliquid.xyz/ws",
+    "testnet": "wss://api.hyperliquid-testnet.xyz/ws",
+}
+
 WEIGHTS = {
     "meta": 20,
     "allMids": 2,
@@ -143,6 +148,21 @@ def parse_mids(raw: Any) -> dict[str, Decimal]:
         if parsed is not None:
             mids[coin] = parsed
     return mids
+
+
+def parse_fills(raw: Any) -> list[tuple[str, int]]:
+    if not isinstance(raw, list):
+        raise HlError("userFills payload is not a list", code="hl_bad_payload")
+    fills: list[tuple[str, int]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        coin = entry.get("coin")
+        ts = entry.get("time")
+        if not isinstance(coin, str) or ts is None:
+            continue
+        fills.append((coin, int(ts)))
+    return fills
 
 
 def parse_account(
@@ -286,6 +306,12 @@ class HlInfoClient:
         with self._lock:
             self._accounts[address] = (self._clock() + self._account_ttl, snapshot)
         return snapshot
+
+    def fills_by_time(self, address: str, start_ms: int) -> list[tuple[str, int]]:
+        raw = self._request(
+            {"type": "userFillsByTime", "user": address, "startTime": int(start_ms)}
+        )
+        return parse_fills(raw)
 
     def invalidate(self, address: str | None = None) -> None:
         with self._lock:

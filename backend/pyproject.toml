@@ -8,8 +8,10 @@ dependencies = [
     "eth-account>=0.13",
     "fastapi>=0.115",
     "hyperliquid-python-sdk>=0.24",
+    "python-socks[asyncio]>=2.5",
     "requests>=2.32",
     "uvicorn[standard]>=0.32",
+    "websockets>=14",
 ]
 
 [dependency-groups]

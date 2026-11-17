@@ -31,7 +31,8 @@ class EngineEvent:
     task_id: int | None = None
     source: str = "reconcile"
     coin: str | None = None
-    latency_ms: int | None = None
+    leader: str | None = None
+    fill_time_ms: int | None = None
 
 
 def default_exchange_factory(settings: Settings) -> Callable[[db.WalletRecord], ExchangeClient]:
@@ -56,6 +57,7 @@ class Engine:
         *,
         exchange_factory: Callable[[db.WalletRecord], ExchangeClient] | None = None,
         clock_ms: Callable[[], int] = db.now_ms,
+        ws=None,
     ) -> None:
         self.settings = settings
         self.info = info
@@ -65,6 +67,9 @@ class Engine:
         self._queue: queue.Queue[EngineEvent] = queue.Queue()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self.ws = ws
+        self._pending_fills: set[tuple[str, str]] = set()
+        self._pending_lock = threading.Lock()
 
     def start(self) -> None:
         self.state.running = True
@@ -78,9 +83,29 @@ class Engine:
             self._thread = None
         self.state.running = False
 
+    def attach_ws(self, ws) -> None:
+        self.ws = ws
+
     def submit(self, event: EngineEvent) -> None:
         self._queue.put(event)
         self.state.queue_depth = self._queue.qsize()
+
+    def submit_fill(self, leader: str, coin: str, fill_time_ms: int) -> bool:
+        key = (leader.lower(), coin)
+        with self._pending_lock:
+            if key in self._pending_fills:
+                return False
+            self._pending_fills.add(key)
+        self.submit(
+            EngineEvent(
+                kind="fill",
+                source="fill",
+                coin=coin,
+                leader=leader,
+                fill_time_ms=fill_time_ms,
+            )
+        )
+        return True
 
     def _run(self) -> None:
         self.reconcile_all(source="start")
@@ -113,14 +138,34 @@ class Engine:
         self.reconcile_all(source="reconcile")
 
     def _handle(self, event: EngineEvent) -> None:
-        if event.kind in ("command", "fill") and event.task_id is not None:
-            self.reconcile_task(event.task_id, source=event.source, latency_ms=event.latency_ms)
-        elif event.kind == "tick":
-            self.reconcile_all(source="reconcile")
+        try:
+            if event.kind == "fill" and event.leader and event.coin:
+                self.apply_fill(event.leader, event.coin, event.fill_time_ms)
+            elif event.kind == "command" and event.task_id is not None:
+                self.reconcile_task(event.task_id, source=event.source)
+            elif event.kind == "tick":
+                self.reconcile_all(source="reconcile")
+        finally:
+            if event.kind == "fill" and event.leader and event.coin:
+                with self._pending_lock:
+                    self._pending_fills.discard((event.leader.lower(), event.coin))
+
+    def apply_fill(self, leader: str, coin: str, fill_time_ms: int | None) -> None:
+        with db.session(self.settings.db_path) as conn:
+            tasks = db.list_running_tasks_by_leader(conn, leader)
+        for task in tasks:
+            self.reconcile_task(
+                task.id, source="fill", fill_time_ms=fill_time_ms, coin_hint=coin
+            )
 
     def reconcile_all(self, source: str = "reconcile") -> None:
         with db.session(self.settings.db_path) as conn:
-            task_ids = [task.id for task in db.list_tasks(conn) if task.status == "running"]
+            tasks = [task for task in db.list_tasks(conn) if task.status == "running"]
+
+        if self.ws is not None:
+            self.ws.sync({task.leader for task in tasks})
+
+        task_ids = [task.id for task in tasks]
 
         for task_id in task_ids:
             try:
@@ -135,7 +180,8 @@ class Engine:
         task_id: int,
         *,
         source: str = "reconcile",
-        latency_ms: int | None = None,
+        fill_time_ms: int | None = None,
+        coin_hint: str | None = None,
     ) -> None:
         with db.session(self.settings.db_path) as conn:
             task = db.get_task(conn, task_id)
@@ -153,6 +199,9 @@ class Engine:
                 return
 
             now_ms = self._clock_ms()
+            latency_ms = (
+                max(0, now_ms - fill_time_ms) if fill_time_ms is not None else None
+            )
             try:
                 meta = self.info.meta()
                 mids = self.info.all_mids()
@@ -173,7 +222,18 @@ class Engine:
                 return
 
             self._reconcile_snapshot(
-                conn, task, wallet, exchange, meta, mids, leader, follower, source, now_ms, latency_ms
+                conn,
+                task,
+                wallet,
+                exchange,
+                meta,
+                mids,
+                leader,
+                follower,
+                source,
+                now_ms,
+                latency_ms,
+                coin_hint,
             )
 
     def _reconcile_snapshot(
@@ -189,6 +249,7 @@ class Engine:
         source: str,
         now_ms: int,
         latency_ms: int | None,
+        coin_hint: str | None = None,
     ) -> None:
         coins = {coin.name: coin for coin in meta.coins}
         leader_positions = {position.coin: position for position in leader.positions}
@@ -199,7 +260,11 @@ class Engine:
         max_notional = Decimal(task.max_notional_usd)
         slippage = Decimal(task.max_slippage)
 
-        for coin in sorted(set(leader_positions) | set(follower_positions)):
+        watch = sorted(set(leader_positions) | set(follower_positions))
+        if coin_hint is not None:
+            watch = [coin for coin in watch if coin == coin_hint]
+
+        for coin in watch:
             coin_meta = coins.get(coin)
             if coin_meta is None:
                 continue

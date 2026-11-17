@@ -430,6 +430,13 @@ def clear_failure(conn: sqlite3.Connection, task_id: int, coin: str) -> None:
     conn.commit()
 
 
+def list_running_tasks_by_leader(conn: sqlite3.Connection, leader: str) -> list[TaskRecord]:
+    rows = conn.execute(
+        "SELECT * FROM tasks WHERE lower(leader) = lower(?) AND status = 'running'", (leader,)
+    ).fetchall()
+    return [_task(row) for row in rows]
+
+
 def insert_exec_log(
     conn: sqlite3.Connection,
     *,

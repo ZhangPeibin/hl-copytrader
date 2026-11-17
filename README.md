@@ -3,7 +3,7 @@
 个人版 Hyperliquid 跟单网站：用多个自有钱包按比例跟随 HL 上任意地址的永续合约交易，
 `docker compose` 一键启动。
 
-> 当前阶段：设计稿，尚未开始实现。完整方案见 [docs/PLAN.md](docs/PLAN.md)。
+> 当前阶段：可启动骨架已完成（T01）；跟单逻辑按 ticket 逐个接入。完整方案见 [docs/PLAN.md](docs/PLAN.md)。
 
 ## 技术栈
 
@@ -12,7 +12,7 @@
 - 事件：WebSocket `userFills` + 定时对账兜底
 - 前端：React + Vite + TypeScript（构建产物由 FastAPI 静态挂载）
 
-## 规划中的启动方式
+## 启动方式
 
 ```bash
 cp .env.example .env      # 填入 HL_SECRET_ENC_KEY 与钱包信息

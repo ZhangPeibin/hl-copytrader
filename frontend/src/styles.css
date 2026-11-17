@@ -1,0 +1,100 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1115;
+  --panel: #171a21;
+  --line: #262b36;
+  --text: #e7e9ee;
+  --muted: #98a0b3;
+  --ok: #6ee7a8;
+  --warn: #f0b46b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin: 6px 0 32px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.card-title {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card-value {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-value.ok {
+  color: var(--ok);
+}
+
+.card-value.warn {
+  color: var(--warn);
+}
+
+.error {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid #6b2b2b;
+  border-radius: 10px;
+  background: #2a1616;
+  color: #ffb4b4;
+  font-size: 14px;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+footer a {
+  color: var(--muted);
+}

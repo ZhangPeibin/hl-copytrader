@@ -6,9 +6,10 @@ Personal Hyperliquid copy-trading site: several self-owned wallets follow a targ
 address's perpetual positions by ratio, started with `docker compose`. A FastAPI
 backend (also serving the built React app) runs one serial engine loop.
 
-Current stage: design only, no implementation yet. `docs/PLAN.md` is the
-authoritative design (architecture, decision table, data model, AC mapping,
-trade-offs). Read it before changing behavior.
+T01–T12 are implemented: wallets, tasks, planner, engine loop, WS fills,
+locking, lifecycle, recovery and the React console. `docs/PLAN.md` is the
+authoritative design and `docs/AC-CHECK.md` records per-AC status. The
+funded order path still needs a testnet run before calling it verified.
 
 ## Agent skills
 
@@ -32,10 +33,13 @@ Implementation tasks use isolated worktrees under `.worktrees/<task-slug>`. See 
 
 ### Layout
 
-- `backend/hlcopy/` — `main.py` (app factory, static mount, engine startup), `config.py`, `crypto.py` (Fernet), `db.py` (schema + repositories), `hl/` (adapter), `engine/`, `api/`
+- `backend/hlcopy/` — `main.py` (app factory, static mount, engine/WS startup), `config.py`, `crypto.py` (Fernet), `db.py` (schema + repositories), `security.py` (password gate), `masking.py` (log redaction)
+- `backend/hlcopy/hl/` — `info.py` (REST + caches + rate limit), `exchange.py` (signing, nonce, orders), `ws.py` (userFills watchers), `rounding.py`, `errors.py`
+- `backend/hlcopy/engine/` — `loop.py` (serial engine, queue, lifecycle), `executor.py` (order placement, cloid, backoff), `planner.py` (pure decision table), `types.py`, `state.py`
+- `backend/hlcopy/api/` — `wallets.py`, `tasks.py`, `logs.py`, `meta.py`, `health.py`
 - `backend/tests/` — pytest
-- `frontend/` — React 18 + Vite + TS, build output statically mounted by FastAPI
-- `docs/PLAN.md` — authoritative design
+- `frontend/src/pages/` — Overview, Wallets, WalletDetail, Tasks, Logs
+- `docs/PLAN.md` — authoritative design; `docs/ARCHITECTURE.md` —施工视图; `docs/AC-CHECK.md` — AC 状态
 - `scripts/probe.py` — captures real HL error strings (needs testnet API wallet credentials)
 
 ### Commands
@@ -55,7 +59,7 @@ Toolchain: backend dependencies via `uv` (`backend/pyproject.toml` + `uv.lock`, 
 - `engine/planner.py` is pure: no `hyperliquid` import, no DB, no network, so tests assert it directly.
 - `hl/` owns all SDK/network/signing; signatures are built only in `hl/exchange.py`.
 - `engine/loop.py` is the only order placer; its serial loop is the mutual exclusion for `(task, coin)`.
-- The `WsListener` thread hands `userFills` to the engine queue — that queue is the only async/sync boundary.
+- `hl/ws.py` watcher threads hand `userFills` to the engine queue — that queue is the only async/sync boundary.
 - `db.py` is the single SQLite writer; one app replica, one uvicorn worker.
 
 ### Numeric contract
@@ -82,3 +86,5 @@ Toolchain: backend dependencies via `uv` (`backend/pyproject.toml` + `uv.lock`, 
 - Reversal is two orders: reduce-only close, then open at the new target.
 - `cloid = blake2b(f"{task_id}|{coin}|{target}|{reverse_leg}")[:16]`; retries reuse it.
 - A per-task exception skips only that task's current round.
+- New tasks start `running`; the engine reconciles on create, on every command and every `RECONCILE_INTERVAL_SEC`.
+- `new_only` locks leader positions only at `start`/`resume`; fills that end flat unlock immediately.

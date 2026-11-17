@@ -71,7 +71,9 @@ def create_app(
     app.state.settings = settings
     app.state.engine_state = EngineState()
     app.state.ws_state = WsState()
-    app.state.info = info_client or HlInfoClient(settings.hl_network)
+    app.state.info = info_client or HlInfoClient(
+        settings.hl_network, account_ttl_sec=float(settings.leader_cache_ttl_sec)
+    )
     app.state.engine = engine or Engine(settings, app.state.info)
     app.state.engine_state = app.state.engine.state
     app.state.ws = WsManager(

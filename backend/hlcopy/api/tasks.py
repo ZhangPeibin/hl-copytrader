@@ -31,7 +31,7 @@ class TaskCreate(BaseModel):
     ratio: str
     max_notional_usd: str
     max_leverage: int = 10
-    max_slippage: str = "0.01"
+    max_slippage: str | None = None
     close_on_stop: bool = False
 
 
@@ -153,7 +153,11 @@ def create_task(payload: TaskCreate, request: Request, settings: SettingsDep) ->
     leader = _leader(payload.leader)
     ratio = _decimal(payload.ratio, "ratio", low=Decimal(0), high=Decimal(1))
     max_notional = _decimal(payload.max_notional_usd, "max_notional_usd", low=Decimal(0), high=Decimal("1e12"))
-    slippage = _decimal(payload.max_slippage, "max_slippage", low=None, high=Decimal("0.1"))
+    slippage = (
+        _decimal(payload.max_slippage, "max_slippage", low=None, high=Decimal("0.1"))
+        if payload.max_slippage is not None
+        else settings.max_slippage_default
+    )
     _leverage(payload.max_leverage)
 
     with db.session(settings.db_path) as conn:

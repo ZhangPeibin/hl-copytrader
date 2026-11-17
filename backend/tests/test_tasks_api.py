@@ -174,6 +174,17 @@ def test_create_task_defaults(client, leader):
     assert body["close_on_stop"] is False
 
 
+def test_create_task_uses_default_slippage(client, leader):
+    wallet = new_wallet(client)
+    payload = task_payload(wallet["id"], leader)
+    del payload["max_slippage"]
+
+    response = client.post("/api/tasks", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["max_slippage"] == "0.01"
+
+
 def test_create_task_requires_wallet(client, leader):
     response = client.post("/api/tasks", json=task_payload(999, leader))
 

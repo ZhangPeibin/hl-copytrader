@@ -46,6 +46,8 @@ None exist yet — the design specifies them (`docs/PLAN.md` §5, §9):
 - `make test` — pytest pure-logic tests, no network
 - `make dev`, `make up`, `make logs` — Makefile wrappers
 
+Toolchain: backend dependencies via `uv` (`backend/pyproject.toml` + `uv.lock`, `uv sync --frozen` in the image); frontend dependencies via `npm` (`frontend/package.json` + `package-lock.json`, `npm ci` in the image).
+
 ### Module boundaries
 
 - `engine/planner.py` is pure: no `hyperliquid` import, no DB, no network, so tests assert it directly.

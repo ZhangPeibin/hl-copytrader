@@ -46,6 +46,7 @@ class FakeInfo:
         self.leader_positions = leader_positions
         self.follower_positions = follower_positions
         self.fail_accounts = fail_accounts
+        self.fail_for: set[str] = set()
 
     def meta(self) -> Meta:
         return Meta(
@@ -60,7 +61,7 @@ class FakeInfo:
         return {"BTC": Decimal("1000"), "ETH": Decimal("3000")}
 
     def account(self, address: str) -> AccountSnapshot:
-        if self.fail_accounts:
+        if self.fail_accounts or address.lower() in self.fail_for:
             raise HlError("leader state unavailable")
         if address.lower() == self.leader.lower():
             return snapshot(address, self.leader_positions)
@@ -340,3 +341,160 @@ def test_close_all_is_reduce_only(settings):
     assert order["size"] == Decimal("1")
     assert order["reduce_only"] is True
     assert logs(settings)[0]["reason"] == "close_all"
+
+
+class Clock:
+    def __init__(self, start: int = 1_700_000_000_000) -> None:
+        self.value = start
+
+    def __call__(self) -> int:
+        return self.value
+
+
+def test_backoff_schedule():
+    from hlcopy.engine.executor import backoff_ms
+
+    assert backoff_ms(0) == 0
+    assert [backoff_ms(count) for count in range(1, 8)] == [
+        5_000,
+        10_000,
+        20_000,
+        40_000,
+        60_000,
+        60_000,
+        60_000,
+    ]
+
+
+def failing_engine(settings, info, exchange, clock):
+    return Engine(settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock)
+
+
+def test_failure_enters_backoff_without_repeat_logs(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange(ExchangeResponse(ok=False, raw={}, error="Insufficient margin", category="insufficient_margin"))
+    clock = Clock()
+    engine = failing_engine(settings, info, exchange, clock)
+
+    engine.reconcile_all(source="reconcile")
+    assert len(logs(settings)) == 1
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None
+    assert state.fail_count == 1
+    assert state.next_retry_at == clock.value + 5_000
+
+    calls_after_first = len(exchange.calls)
+    engine.reconcile_all(source="reconcile")
+
+    assert len(exchange.calls) == calls_after_first
+    assert len(logs(settings)) == 1
+
+
+def test_retry_after_backoff_window(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange(ExchangeResponse(ok=False, raw={}, error="Insufficient margin", category="insufficient_margin"))
+    clock = Clock()
+    engine = failing_engine(settings, info, exchange, clock)
+
+    engine.reconcile_all(source="reconcile")
+    clock.value += 5_001
+    engine.reconcile_all(source="reconcile")
+
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None
+    assert state.fail_count == 2
+    assert state.next_retry_at == clock.value + 10_000
+    assert len(logs(settings)) == 2
+
+
+def test_success_clears_failure_state(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange(ExchangeResponse(ok=False, raw={}, error="Insufficient margin", category="insufficient_margin"))
+    clock = Clock()
+    engine = failing_engine(settings, info, exchange, clock)
+
+    engine.reconcile_all(source="reconcile")
+    clock.value += 5_001
+    exchange.order_response = ExchangeResponse(ok=True, raw={}, oid=9)
+    engine.reconcile_all(source="reconcile")
+
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None
+    assert state.fail_count == 0
+    assert state.next_retry_at is None
+    assert state.last_error is None
+
+
+def test_one_task_failure_does_not_block_another(settings):
+    wallet_a = add_wallet(settings)
+    wallet_b = add_wallet(settings)
+    leader_a = Account.create().address
+    leader_b = Account.create().address
+    add_task(settings, wallet_a, leader_a)
+    task_b = add_task(settings, wallet_b, leader_b)
+    info = FakeInfo(leader_b, [position("BTC", "1")], [])
+    info.fail_for = {leader_a.lower()}
+    exchange = FakeExchange()
+
+    make_engine(settings, info, exchange).reconcile_all(source="reconcile")
+
+    sources = {row["task_id"] for row in logs(settings)}
+    assert task_b.id in sources
+    assert any(row["coin"] == "*" for row in logs(settings))
+    orders = [call for call in exchange.calls if call[0] == "order"]
+    assert len(orders) == 1
+
+
+def test_tick_uses_reconcile_source(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange()
+
+    make_engine(settings, info, exchange).tick()
+
+    assert logs(settings)[0]["source"] == "reconcile"
+    assert logs(settings)[0]["result"] == "filled"
+
+
+def test_add_reduce_and_close_converge(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader, ratio="1", max_notional="1000000")
+    info = FakeInfo(leader, [position("BTC", "3")], [position("BTC", "1")])
+    exchange = FakeExchange()
+    engine = make_engine(settings, info, exchange)
+
+    engine.reconcile_all(source="reconcile")
+    _, add = [call for call in exchange.calls if call[0] == "order"][0]
+    assert add["is_buy"] is True
+    assert add["size"] == Decimal("2")
+    assert add["reduce_only"] is False
+
+    info.leader_positions = [position("BTC", "0.5")]
+    info.follower_positions = [position("BTC", "3")]
+    engine.reconcile_all(source="reconcile")
+    _, reduce = exchange.calls[-1]
+    assert reduce["is_buy"] is False
+    assert reduce["size"] == Decimal("2.5")
+    assert reduce["reduce_only"] is True
+
+    info.leader_positions = []
+    info.follower_positions = [position("BTC", "0.5")]
+    engine.reconcile_all(source="reconcile")
+    _, close = exchange.calls[-1]
+    assert close["size"] == Decimal("0.5")
+    assert close["reduce_only"] is True

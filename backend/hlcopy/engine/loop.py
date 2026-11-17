@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Callable
@@ -83,17 +84,33 @@ class Engine:
 
     def _run(self) -> None:
         self.reconcile_all(source="start")
+        interval = float(self.settings.reconcile_interval_sec)
+        next_tick = time.monotonic() + interval
+
         while not self._stop.is_set():
+            remaining = next_tick - time.monotonic()
             try:
-                event = self._queue.get(timeout=0.5)
+                event = self._queue.get(timeout=max(0.05, min(0.5, remaining)))
             except queue.Empty:
-                continue
-            try:
-                self._handle(event)
-            except Exception:
-                log.exception("engine event failed")
-            finally:
-                self.state.queue_depth = self._queue.qsize()
+                event = None
+
+            if event is not None:
+                try:
+                    self._handle(event)
+                except Exception:
+                    log.exception("engine event failed")
+                finally:
+                    self.state.queue_depth = self._queue.qsize()
+
+            if time.monotonic() >= next_tick:
+                try:
+                    self.tick()
+                except Exception:
+                    log.exception("engine tick failed")
+                next_tick = time.monotonic() + interval
+
+    def tick(self) -> None:
+        self.reconcile_all(source="reconcile")
 
     def _handle(self, event: EngineEvent) -> None:
         if event.kind in ("command", "fill") and event.task_id is not None:
@@ -243,5 +260,5 @@ class Engine:
 
             if action.orders or action.leverage is not None:
                 execute_action(conn, exchange, ctx, action)
-            else:
+            elif action.reason != "backoff":
                 log_skip(conn, ctx, action)

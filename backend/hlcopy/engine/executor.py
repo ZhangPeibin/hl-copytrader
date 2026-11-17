@@ -13,6 +13,14 @@ from hlcopy.hl.rounding import round_price
 from hlcopy.numeric import canonical
 
 MAX_RAW_CHARS = 2000
+BACKOFF_BASE_MS = 5_000
+BACKOFF_MAX_MS = 60_000
+
+
+def backoff_ms(fail_count: int) -> int:
+    if fail_count <= 0:
+        return 0
+    return min(BACKOFF_BASE_MS * (2 ** (fail_count - 1)), BACKOFF_MAX_MS)
 
 
 def cloid_for(task_id: int, coin: str, target: Decimal, leg: int) -> str:
@@ -25,6 +33,18 @@ def cloid_for(task_id: int, coin: str, target: Decimal, leg: int) -> str:
 def limit_price(mark: Decimal, slippage: Decimal, side: str, sz_decimals: int) -> Decimal:
     factor = Decimal(1) + slippage if side == "buy" else Decimal(1) - slippage
     return round_price(mark * factor, sz_decimals, side=side)
+
+
+def _record_failure(conn, ctx: ExecutionContext, response: ExchangeResponse) -> None:
+    state = db.get_coin_state(conn, ctx.task_id, ctx.coin)
+    fail_count = (state.fail_count if state else 0) + 1
+    db.record_failure(
+        conn,
+        ctx.task_id,
+        ctx.coin,
+        error=_raw_text(response) or "order rejected",
+        next_retry_at=ctx.now_ms + backoff_ms(fail_count),
+    )
 
 
 def _raw_text(response: ExchangeResponse) -> str | None:
@@ -86,6 +106,7 @@ def execute_action(conn, exchange: ExchangeClient, ctx: ExecutionContext, action
                 reason=action.reason,
                 raw=_raw_text(response),
             )
+            _record_failure(conn, ctx, response)
             return
         db.mark_leverage_set(conn, ctx.task_id, ctx.coin)
 
@@ -122,6 +143,8 @@ def execute_action(conn, exchange: ExchangeClient, ctx: ExecutionContext, action
             raw=None if ok else _raw_text(response),
         )
         if not ok:
+            _record_failure(conn, ctx, response)
             return
 
+    db.clear_failure(conn, ctx.task_id, ctx.coin)
     db.set_last_target(conn, ctx.task_id, ctx.coin, canonical(action.target))

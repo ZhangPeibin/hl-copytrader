@@ -219,6 +219,7 @@ class CoinStateRecord:
     leverage_set: bool
     next_retry_at: int | None
     fail_count: int
+    last_error: str | None
 
 
 def _task(row: sqlite3.Row) -> TaskRecord:
@@ -341,6 +342,7 @@ def list_coin_states(conn: sqlite3.Connection, task_id: int) -> dict[str, CoinSt
             leverage_set=bool(row["leverage_set"]),
             next_retry_at=row["next_retry_at"],
             fail_count=row["fail_count"],
+            last_error=row["last_error"],
         )
         for row in rows
     }
@@ -359,6 +361,7 @@ def get_coin_state(conn: sqlite3.Connection, task_id: int, coin: str) -> CoinSta
         leverage_set=bool(row["leverage_set"]),
         next_retry_at=row["next_retry_at"],
         fail_count=row["fail_count"],
+        last_error=row["last_error"],
     )
 
 

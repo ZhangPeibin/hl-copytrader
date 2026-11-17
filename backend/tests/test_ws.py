@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from hlcopy.hl.info import Fill
 from hlcopy.hl.ws import LeaderWatcher, WsManager, parse_wire_message
 
 
@@ -22,8 +23,9 @@ def test_parse_wire_message_returns_fills():
         ]
     )
 
-    assert parse_wire_message(raw) == [("BTC", 100), ("ETH", 101)]
-    assert parse_wire_message(raw.encode()) == [("BTC", 100), ("ETH", 101)]
+    parsed = parse_wire_message(raw)
+    assert [(fill.coin, fill.ts) for fill in parsed] == [("BTC", 100), ("ETH", 101)]
+    assert parse_wire_message(raw.encode()) == parsed
 
 
 def test_parse_wire_message_skips_snapshots():
@@ -39,7 +41,7 @@ def test_parse_wire_message_ignores_other_channels_and_garbage():
 
 def test_parse_wire_message_skips_malformed_fills():
     raw = fill_message([{"coin": "BTC"}, {"time": 5}, "nope", {"coin": "SOL", "time": 6}])
-    assert parse_wire_message(raw) == [("SOL", 6)]
+    assert [fill.coin for fill in parse_wire_message(raw)] == ["SOL"]
 
 
 class FakeWatcher:
@@ -69,7 +71,7 @@ def test_ws_manager_syncs_subscriptions():
 
     manager = WsManager(
         "mainnet",
-        on_fill=lambda leader, coin, ts: True,
+        on_fill=lambda leader, fill: True,
         backfill=lambda leader, since: [],
         watcher_factory=factory,
     )
@@ -99,8 +101,8 @@ def test_watcher_handles_messages_and_backfills():
     watcher = LeaderWatcher(
         url="ws://localhost",
         leader="0xabc",
-        on_fill=lambda leader, coin, ts: events.append((leader, coin, ts)) or True,
-        backfill=lambda leader, since: [("BTC", 200), ("ETH", 300)],
+        on_fill=lambda leader, fill: events.append((leader, fill.coin, fill.ts)) or True,
+        backfill=lambda leader, since: [Fill(coin="BTC", ts=200), Fill(coin="ETH", ts=300)],
         on_state=lambda: None,
     )
 

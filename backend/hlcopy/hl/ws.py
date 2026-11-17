@@ -5,19 +5,20 @@ import json
 import logging
 import threading
 from collections.abc import Callable
+from decimal import Decimal, InvalidOperation
 
 import websockets
 
 from hlcopy.engine.state import WsState
 from hlcopy.hl.errors import mask_secrets
-from hlcopy.hl.info import WS_URLS
+from hlcopy.hl.info import WS_URLS, Fill
 
 log = logging.getLogger("hlcopy.hl.ws")
 
 RECONNECT_DELAYS = (1.0, 2.0, 5.0)
 
 
-def parse_wire_message(raw: str | bytes) -> list[tuple[str, int]]:
+def parse_wire_message(raw: str | bytes) -> list[Fill]:
     try:
         payload = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -27,15 +28,32 @@ def parse_wire_message(raw: str | bytes) -> list[tuple[str, int]]:
     data = payload.get("data")
     if not isinstance(data, dict) or data.get("isSnapshot"):
         return []
-    fills: list[tuple[str, int]] = []
+    fills: list[Fill] = []
     for entry in data.get("fills") or []:
         if not isinstance(entry, dict):
             continue
         coin = entry.get("coin")
         ts = entry.get("time")
-        if isinstance(coin, str) and ts is not None:
-            fills.append((coin, int(ts)))
+        if not isinstance(coin, str) or ts is None:
+            continue
+        fills.append(
+            Fill(
+                coin=coin,
+                ts=int(ts),
+                start_position=_dec(entry.get("startPosition")),
+                size=_dec(entry.get("sz")),
+            )
+        )
     return fills
+
+
+def _dec(raw) -> Decimal | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return Decimal(str(raw))
+    except InvalidOperation:
+        return None
 
 
 class LeaderWatcher(threading.Thread):
@@ -44,8 +62,8 @@ class LeaderWatcher(threading.Thread):
         *,
         url: str,
         leader: str,
-        on_fill: Callable[[str, str, int], bool],
-        backfill: Callable[[str, int], list[tuple[str, int]]],
+        on_fill: Callable[[str, Fill], bool],
+        backfill: Callable[[str, int], list[Fill]],
         on_state: Callable[[], None],
     ) -> None:
         super().__init__(daemon=True, name=f"ws-{leader[:10]}")
@@ -68,10 +86,10 @@ class LeaderWatcher(threading.Thread):
             loop.call_soon_threadsafe(lambda: asyncio.ensure_future(ws.close()))
 
     def handle_message(self, raw: str | bytes) -> None:
-        for coin, ts in parse_wire_message(raw):
-            if self.last_seen_ms is None or ts > self.last_seen_ms:
-                self.last_seen_ms = ts
-            self.on_fill(self.leader, coin, ts)
+        for fill in parse_wire_message(raw):
+            if self.last_seen_ms is None or fill.ts > self.last_seen_ms:
+                self.last_seen_ms = fill.ts
+            self.on_fill(self.leader, fill)
 
     def run(self) -> None:
         try:
@@ -129,10 +147,10 @@ class LeaderWatcher(threading.Thread):
         except Exception as exc:
             log.warning("ws backfill failed for %s: %s", self.leader, mask_secrets(str(exc)))
             return
-        for coin, ts in fills:
-            if ts > self.last_seen_ms:
-                self.last_seen_ms = ts
-            self.on_fill(self.leader, coin, ts)
+        for fill in fills:
+            if fill.ts > self.last_seen_ms:
+                self.last_seen_ms = fill.ts
+            self.on_fill(self.leader, fill)
 
 
 class WsManager:
@@ -140,8 +158,8 @@ class WsManager:
         self,
         network: str,
         *,
-        on_fill: Callable[[str, str, int], bool],
-        backfill: Callable[[str, int], list[tuple[str, int]]],
+        on_fill: Callable[[str, Fill], bool],
+        backfill: Callable[[str, int], list[Fill]],
         watcher_factory: Callable[..., LeaderWatcher] | None = None,
     ) -> None:
         if network not in WS_URLS:

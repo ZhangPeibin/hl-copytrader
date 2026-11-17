@@ -10,7 +10,7 @@ from hlcopy.config import Settings
 from hlcopy.engine.loop import Engine
 from hlcopy.hl.errors import HlError
 from hlcopy.hl.exchange import ExchangeResponse
-from hlcopy.hl.info import AccountSnapshot, CoinMeta, Meta, Position
+from hlcopy.hl.info import AccountSnapshot, CoinMeta, Fill, Meta, Position
 
 from conftest import make_settings
 
@@ -117,13 +117,14 @@ def add_task(
     max_notional: str = "10000",
     slippage: str = "0.01",
     status: str = "running",
+    mode: str = "sync",
 ) -> db.TaskRecord:
     with db.session(settings.db_path) as conn:
         task_id = db.insert_task(
             conn,
             wallet_id=wallet.id,
             leader=leader,
-            mode="sync",
+            mode=mode,
             ratio=ratio,
             max_notional_usd=max_notional,
             max_leverage="10",
@@ -507,10 +508,10 @@ def test_submit_fill_dedupes_pending_leaders(settings):
     add_task(settings, wallet, leader)
     engine = make_engine(settings, FakeInfo(leader, [], []), FakeExchange())
 
-    assert engine.submit_fill(leader, "BTC", 1_000) is True
-    assert engine.submit_fill(leader, "BTC", 1_100) is False
+    assert engine.submit_fill(leader, Fill(coin="BTC", ts=1_000)) is True
+    assert engine.submit_fill(leader, Fill(coin="BTC", ts=1_100)) is False
     assert engine.state.queue_depth == 1
-    assert engine.submit_fill(leader, "ETH", 1_200) is True
+    assert engine.submit_fill(leader, Fill(coin="ETH", ts=1_200)) is True
     assert engine.state.queue_depth == 2
 
 
@@ -527,7 +528,7 @@ def test_apply_fill_reconciles_every_task_following_the_leader(settings):
         settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock
     )
 
-    engine.apply_fill(leader, "BTC", clock.value - 1_500)
+    engine.apply_fill(leader, Fill(coin="BTC", ts=clock.value - 1_500))
 
     rows = logs(settings)
     assert {row["task_id"] for row in rows} == {task_a.id, task_b.id}
@@ -545,7 +546,7 @@ def test_apply_fill_only_reconciles_the_filled_coin(settings):
     clock = Clock()
     engine = Engine(settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock)
 
-    engine.apply_fill(leader, "BTC", clock.value)
+    engine.apply_fill(leader, Fill(coin="BTC", ts=clock.value))
 
     orders = [call[1]["asset"] for call in exchange.calls if call[0] == "order"]
     assert orders == [0]
@@ -558,6 +559,142 @@ def test_apply_fill_ignores_paused_tasks(settings):
     exchange = FakeExchange()
     engine = make_engine(settings, FakeInfo(leader, [position("BTC", "1")], []), exchange)
 
-    engine.apply_fill(leader, "BTC", 1)
+    engine.apply_fill(leader, Fill(coin="BTC", ts=1))
 
+    assert exchange.calls == []
+
+
+def test_new_only_locks_positions_at_start(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader, mode="new_only")
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange()
+
+    make_engine(settings, info, exchange).reconcile_all(source="start")
+
+    assert exchange.calls == []
+    rows = logs(settings)
+    assert rows[0]["reason"] == "locked"
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None and state.locked is True
+
+
+def test_new_only_keeps_lock_on_later_rounds(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader, mode="new_only")
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange()
+    engine = make_engine(settings, info, exchange)
+
+    engine.reconcile_all(source="start")
+    engine.reconcile_all(source="reconcile")
+
+    assert exchange.calls == []
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None and state.locked is True
+
+
+def test_new_only_follows_positions_opened_after_start(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader, mode="new_only")
+    info = FakeInfo(leader, [], [])
+    exchange = FakeExchange()
+    engine = make_engine(settings, info, exchange)
+
+    engine.reconcile_all(source="start")
+    assert exchange.calls == []
+
+    info.leader_positions = [position("BTC", "1")]
+    engine.reconcile_all(source="reconcile")
+
+    assert [call[0] for call in exchange.calls] == ["leverage", "order"]
+    assert logs(settings)[0]["reason"] == "set_leverage"
+
+
+def test_sync_mode_never_locks(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader, mode="sync")
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+
+    make_engine(settings, info, FakeExchange()).reconcile_all(source="start")
+
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None and state.locked is False
+
+
+def test_reconcile_unlocks_when_leader_goes_flat(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader, mode="new_only")
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = FakeExchange()
+    engine = make_engine(settings, info, exchange)
+
+    engine.reconcile_all(source="start")
+    info.leader_positions = []
+    engine.reconcile_all(source="reconcile")
+
+    with db.session(settings.db_path) as conn:
+        state = db.get_coin_state(conn, task.id, "BTC")
+    assert state is not None and state.locked is False
+    assert logs(settings)[0]["reason"] == "unlocked"
+    assert exchange.calls == []
+
+    info.leader_positions = [position("BTC", "2")]
+    engine.reconcile_all(source="reconcile")
+
+    orders = [call for call in exchange.calls if call[0] == "order"]
+    assert len(orders) == 1
+    assert orders[0][1]["size"] == Decimal("0.2")
+
+
+def test_fill_that_closes_position_unlocks_before_reconcile(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader, mode="new_only")
+    info = FakeInfo(leader, [position("BTC", "2")], [])
+    exchange = FakeExchange()
+    clock = Clock()
+    engine = Engine(settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock)
+
+    engine.reconcile_all(source="start")
+    with db.session(settings.db_path) as conn:
+        assert db.get_coin_state(conn, task.id, "BTC").locked is True
+
+    engine.apply_fill(
+        leader,
+        Fill(coin="BTC", ts=clock.value, start_position=Decimal("1"), size=Decimal("-1")),
+    )
+
+    with db.session(settings.db_path) as conn:
+        assert db.get_coin_state(conn, task.id, "BTC").locked is False
+    orders = [call for call in exchange.calls if call[0] == "order"]
+    assert len(orders) == 1
+    assert orders[0][1]["size"] == Decimal("0.2")
+
+
+def test_fill_that_reduces_does_not_unlock(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader, mode="new_only")
+    info = FakeInfo(leader, [position("BTC", "2")], [])
+    exchange = FakeExchange()
+    clock = Clock()
+    engine = Engine(settings, info, exchange_factory=lambda wallet: exchange, clock_ms=clock)
+
+    engine.reconcile_all(source="start")
+    engine.apply_fill(
+        leader,
+        Fill(coin="BTC", ts=clock.value, start_position=Decimal("2"), size=Decimal("-1")),
+    )
+
+    with db.session(settings.db_path) as conn:
+        assert db.get_coin_state(conn, task.id, "BTC").locked is True
     assert exchange.calls == []

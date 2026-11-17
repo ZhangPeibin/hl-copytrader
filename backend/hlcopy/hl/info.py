@@ -66,6 +66,20 @@ class Meta:
 
 
 @dataclass(frozen=True)
+class Fill:
+    coin: str
+    ts: int
+    start_position: Decimal | None = None
+    size: Decimal | None = None
+
+    @property
+    def closes_position(self) -> bool:
+        if self.start_position is None or self.size is None:
+            return False
+        return self.start_position + self.size == 0
+
+
+@dataclass(frozen=True)
 class Position:
     coin: str
     size: Decimal
@@ -150,10 +164,10 @@ def parse_mids(raw: Any) -> dict[str, Decimal]:
     return mids
 
 
-def parse_fills(raw: Any) -> list[tuple[str, int]]:
+def parse_fills(raw: Any) -> list[Fill]:
     if not isinstance(raw, list):
         raise HlError("userFills payload is not a list", code="hl_bad_payload")
-    fills: list[tuple[str, int]] = []
+    fills: list[Fill] = []
     for entry in raw:
         if not isinstance(entry, dict):
             continue
@@ -161,7 +175,14 @@ def parse_fills(raw: Any) -> list[tuple[str, int]]:
         ts = entry.get("time")
         if not isinstance(coin, str) or ts is None:
             continue
-        fills.append((coin, int(ts)))
+        fills.append(
+            Fill(
+                coin=coin,
+                ts=int(ts),
+                start_position=_dec(entry.get("startPosition")),
+                size=_dec(entry.get("sz")),
+            )
+        )
     return fills
 
 
@@ -307,7 +328,7 @@ class HlInfoClient:
             self._accounts[address] = (self._clock() + self._account_ttl, snapshot)
         return snapshot
 
-    def fills_by_time(self, address: str, start_ms: int) -> list[tuple[str, int]]:
+    def fills_by_time(self, address: str, start_ms: int) -> list[Fill]:
         raw = self._request(
             {"type": "userFillsByTime", "user": address, "startTime": int(start_ms)}
         )

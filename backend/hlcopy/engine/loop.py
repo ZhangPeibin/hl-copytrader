@@ -17,7 +17,7 @@ from hlcopy.engine.types import PlanInput
 from hlcopy.hl.errors import HlError, mask_secrets
 from hlcopy.crypto import SecretUnreadable
 from hlcopy.hl.exchange import ExchangeClient, WalletKeyMismatch, WalletSigner
-from hlcopy.hl.info import HlInfoClient
+from hlcopy.hl.info import Fill, HlInfoClient
 from hlcopy.numeric import canonical
 
 log = logging.getLogger("hlcopy.engine")
@@ -90,8 +90,8 @@ class Engine:
         self._queue.put(event)
         self.state.queue_depth = self._queue.qsize()
 
-    def submit_fill(self, leader: str, coin: str, fill_time_ms: int) -> bool:
-        key = (leader.lower(), coin)
+    def submit_fill(self, leader: str, fill: Fill) -> bool:
+        key = (leader.lower(), fill.coin)
         with self._pending_lock:
             if key in self._pending_fills:
                 return False
@@ -100,9 +100,9 @@ class Engine:
             EngineEvent(
                 kind="fill",
                 source="fill",
-                coin=coin,
+                coin=fill.coin,
                 leader=leader,
-                fill_time_ms=fill_time_ms,
+                fill_time_ms=fill.ts,
             )
         )
         return True
@@ -140,7 +140,10 @@ class Engine:
     def _handle(self, event: EngineEvent) -> None:
         try:
             if event.kind == "fill" and event.leader and event.coin:
-                self.apply_fill(event.leader, event.coin, event.fill_time_ms)
+                self.apply_fill(
+                    event.leader,
+                    Fill(coin=event.coin, ts=event.fill_time_ms or 0),
+                )
             elif event.kind == "command" and event.task_id is not None:
                 self.reconcile_task(event.task_id, source=event.source)
             elif event.kind == "tick":
@@ -150,12 +153,15 @@ class Engine:
                 with self._pending_lock:
                     self._pending_fills.discard((event.leader.lower(), event.coin))
 
-    def apply_fill(self, leader: str, coin: str, fill_time_ms: int | None) -> None:
+    def apply_fill(self, leader: str, fill: Fill) -> None:
         with db.session(self.settings.db_path) as conn:
             tasks = db.list_running_tasks_by_leader(conn, leader)
+            if fill.closes_position:
+                for task in tasks:
+                    db.set_locked(conn, task.id, fill.coin, False)
         for task in tasks:
             self.reconcile_task(
-                task.id, source="fill", fill_time_ms=fill_time_ms, coin_hint=coin
+                task.id, source="fill", fill_time_ms=fill.ts, coin_hint=fill.coin
             )
 
     def reconcile_all(self, source: str = "reconcile") -> None:
@@ -254,13 +260,21 @@ class Engine:
         coins = {coin.name: coin for coin in meta.coins}
         leader_positions = {position.coin: position for position in leader.positions}
         follower_positions = {position.coin: position for position in follower.positions}
+
+        if source in ("start", "resume") and task.mode == "new_only":
+            for position in leader.positions:
+                if position.size != 0:
+                    db.set_locked(conn, task.id, position.coin, True)
+
         states = db.list_coin_states(conn, task.id)
 
         ratio = Decimal(task.ratio)
         max_notional = Decimal(task.max_notional_usd)
         slippage = Decimal(task.max_slippage)
 
-        watch = sorted(set(leader_positions) | set(follower_positions))
+        watch = set(leader_positions) | set(follower_positions)
+        watch |= {coin for coin, state in states.items() if state.locked}
+        watch = sorted(watch)
         if coin_hint is not None:
             watch = [coin for coin in watch if coin == coin_hint]
 
@@ -322,6 +336,9 @@ class Engine:
                 now_ms=now_ms,
                 latency_ms=latency_ms,
             )
+
+            if action.unlocked:
+                db.set_locked(conn, task.id, coin, False)
 
             if action.orders or action.leverage is not None:
                 execute_action(conn, exchange, ctx, action)

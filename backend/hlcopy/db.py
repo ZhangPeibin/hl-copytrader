@@ -365,6 +365,19 @@ def get_coin_state(conn: sqlite3.Connection, task_id: int, coin: str) -> CoinSta
     )
 
 
+def set_locked(conn: sqlite3.Connection, task_id: int, coin: str, locked: bool) -> None:
+    conn.execute(
+        """
+        INSERT INTO coin_states(task_id, coin, locked, last_action_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(task_id, coin) DO UPDATE
+        SET locked = excluded.locked, last_action_at = excluded.last_action_at
+        """,
+        (task_id, coin, int(locked), now_ms()),
+    )
+    conn.commit()
+
+
 def mark_leverage_set(conn: sqlite3.Connection, task_id: int, coin: str) -> None:
     conn.execute(
         """

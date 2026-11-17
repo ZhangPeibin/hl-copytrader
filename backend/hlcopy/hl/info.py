@@ -26,6 +26,7 @@ WEIGHTS = {
     "allMids": 2,
     "clearinghouseState": 2,
     "openOrders": 2,
+    "userFillsByTime": 20,
 }
 
 log = logging.getLogger("hlcopy.hl.info")

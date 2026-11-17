@@ -86,7 +86,32 @@ def log_skip(conn, ctx: ExecutionContext, action: Action) -> None:
     )
 
 
+def _task_running(conn, task_id: int) -> bool:
+    task = db.get_task(conn, task_id)
+    return task is not None and task.status == "running"
+
+
+def _log_stopped(conn, ctx: ExecutionContext, action: Action) -> None:
+    db.insert_exec_log(
+        conn,
+        task_id=ctx.task_id,
+        wallet_id=ctx.wallet_id,
+        ts=ctx.now_ms,
+        source=ctx.source,
+        coin=ctx.coin,
+        leader_pos=canonical(ctx.leader_pos),
+        pos_before=canonical(ctx.pos_before),
+        target=canonical(action.target),
+        result="skipped",
+        reason="task_stopped",
+    )
+
+
 def execute_action(conn, exchange: ExchangeClient, ctx: ExecutionContext, action: Action) -> None:
+    if not _task_running(conn, ctx.task_id):
+        _log_stopped(conn, ctx, action)
+        return
+
     if action.leverage is not None:
         response = exchange.update_leverage(
             asset=ctx.coin_meta.asset_index,
@@ -113,6 +138,9 @@ def execute_action(conn, exchange: ExchangeClient, ctx: ExecutionContext, action
         db.mark_leverage_set(conn, ctx.task_id, ctx.coin)
 
     for order in action.orders:
+        if not _task_running(conn, ctx.task_id):
+            _log_stopped(conn, ctx, action)
+            return
         price = limit_price(ctx.mark_px, ctx.slippage, order.side, ctx.coin_meta.sz_decimals)
         cloid = cloid_for(ctx.task_id, ctx.coin, action.target, order.leg)
         response = exchange.place_ioc(

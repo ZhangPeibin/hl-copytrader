@@ -33,6 +33,7 @@ class Settings:
     reconcile_interval_sec: int
     leader_cache_ttl_sec: Decimal
     max_slippage_default: Decimal
+    log_retention_days: int
 
 
 def _secret_key(raw: str | None) -> str:
@@ -62,6 +63,17 @@ def _decimal(env: Mapping[str, str], name: str, default: str) -> Decimal:
         return Decimal(raw)
     except InvalidOperation as exc:
         raise ConfigError(f"{name} must be a decimal string, got {raw!r}") from exc
+
+
+def _non_negative_int(env: Mapping[str, str], name: str, default: str) -> int:
+    raw = env.get(name, default)
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+    if value < 0:
+        raise ConfigError(f"{name} must be >= 0, got {value}")
+    return value
 
 
 def _positive_int(env: Mapping[str, str], name: str, default: str) -> int:
@@ -98,4 +110,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         reconcile_interval_sec=_positive_int(source, "RECONCILE_INTERVAL_SEC", "30"),
         leader_cache_ttl_sec=_decimal(source, "LEADER_CACHE_TTL_SEC", "2"),
         max_slippage_default=_decimal(source, "MAX_SLIPPAGE_DEFAULT", "0.01"),
+        log_retention_days=_non_negative_int(source, "LOG_RETENTION_DAYS", "30"),
     )

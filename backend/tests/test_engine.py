@@ -7,7 +7,7 @@ from eth_account import Account
 
 from hlcopy import crypto, db
 from hlcopy.config import Settings
-from hlcopy.engine.loop import Engine
+from hlcopy.engine.loop import Engine, EngineEvent
 from hlcopy.hl.errors import HlError
 from hlcopy.hl.exchange import ExchangeResponse
 from hlcopy.hl.info import AccountSnapshot, CoinMeta, Fill, Meta, Position
@@ -816,3 +816,121 @@ def test_restart_replays_running_tasks_with_the_same_cloid(settings):
 
     assert [call[0] for call in restart_exchange.calls] == ["order"]
     assert restart_exchange.calls[0][1]["cloid"] == first_cloid
+
+
+class FakeWs:
+    def __init__(self) -> None:
+        self.synced: list[set[str]] = []
+
+    def sync(self, leaders) -> None:
+        self.synced.append(set(leaders))
+
+    def stop(self) -> None:
+        pass
+
+
+def test_command_syncs_ws_subscriptions(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    ws = FakeWs()
+    engine = Engine(
+        settings,
+        FakeInfo(leader, [], []),
+        exchange_factory=lambda wallet: FakeExchange(),
+        ws=ws,
+    )
+
+    engine._handle(EngineEvent(kind="command", task_id=task.id, source="start"))
+
+    assert {item.lower() for item in ws.synced[-1]} == {leader.lower()}
+
+
+def test_pause_and_stop_remove_subscriptions(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    ws = FakeWs()
+    engine = Engine(
+        settings,
+        FakeInfo(leader, [], []),
+        exchange_factory=lambda wallet: FakeExchange(),
+        ws=ws,
+    )
+
+    with db.session(settings.db_path) as conn:
+        db.set_task_status(conn, task.id, "paused")
+    engine._handle(EngineEvent(kind="sync"))
+    assert ws.synced[-1] == set()
+
+    with db.session(settings.db_path) as conn:
+        db.set_task_status(conn, task.id, "stopped")
+    engine._handle(EngineEvent(kind="sync"))
+    assert ws.synced[-1] == set()
+
+
+class StoppingExchange(FakeExchange):
+    def __init__(self, settings, task_id: int) -> None:
+        super().__init__()
+        self.settings = settings
+        self.task_id = task_id
+
+    def update_leverage(self, **kwargs) -> ExchangeResponse:
+        super().update_leverage(**kwargs)
+        with db.session(self.settings.db_path) as conn:
+            db.set_task_status(conn, self.task_id, "stopped")
+        return ExchangeResponse(ok=True, raw={})
+
+
+def test_stop_mid_round_prevents_the_order(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    task = add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [position("BTC", "1")], [])
+    exchange = StoppingExchange(settings, task.id)
+
+    Engine(settings, info, exchange_factory=lambda wallet: exchange).reconcile_all(source="start")
+
+    assert [call[0] for call in exchange.calls] == ["leverage"]
+    row = logs(settings)[0]
+    assert row["result"] == "skipped"
+    assert row["reason"] == "task_stopped"
+    with db.session(settings.db_path) as conn:
+        assert db.get_task(conn, task.id).status == "stopped"
+
+
+def test_old_logs_are_pruned_on_reconcile(settings):
+    old_ts = db.now_ms() - 40 * 86_400_000
+    with db.session(settings.db_path) as conn:
+        db.insert_exec_log(
+            conn, task_id=1, wallet_id=1, ts=old_ts, source="reconcile", coin="BTC",
+            result="skipped", reason="no_position",
+        )
+        db.insert_exec_log(
+            conn, task_id=1, wallet_id=1, ts=db.now_ms(), source="reconcile", coin="ETH",
+            result="skipped", reason="no_position",
+        )
+
+    Engine(settings, FakeInfo(Account.create().address, [], []), exchange_factory=lambda w: FakeExchange()).reconcile_all(source="start")
+
+    remaining = logs(settings)
+    assert [row["coin"] for row in remaining] == ["ETH"]
+
+
+def test_pruning_can_be_disabled(settings):
+    with db.session(settings.db_path) as conn:
+        db.insert_exec_log(
+            conn, task_id=1, wallet_id=1, ts=1, source="reconcile", coin="BTC",
+            result="skipped", reason="no_position",
+        )
+
+    disabled = replace_settings(settings, log_retention_days=0)
+    Engine(disabled, FakeInfo(Account.create().address, [], []), exchange_factory=lambda w: FakeExchange()).reconcile_all(source="start")
+
+    assert len(logs(settings)) == 1
+
+
+def replace_settings(settings, **overrides):
+    from dataclasses import replace
+
+    return replace(settings, **overrides)

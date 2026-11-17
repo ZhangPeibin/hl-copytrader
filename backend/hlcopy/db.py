@@ -453,6 +453,12 @@ def clear_failure(conn: sqlite3.Connection, task_id: int, coin: str) -> None:
     conn.commit()
 
 
+def prune_exec_logs(conn: sqlite3.Connection, before_ms: int) -> int:
+    cursor = conn.execute("DELETE FROM exec_logs WHERE ts < ?", (before_ms,))
+    conn.commit()
+    return int(cursor.rowcount)
+
+
 def list_running_tasks_by_leader(conn: sqlite3.Connection, leader: str) -> list[TaskRecord]:
     rows = conn.execute(
         "SELECT * FROM tasks WHERE lower(leader) = lower(?) AND status = 'running'", (leader,)

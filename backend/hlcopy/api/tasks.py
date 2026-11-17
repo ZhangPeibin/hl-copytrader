@@ -355,8 +355,10 @@ def start_task(task_id: int, request: Request, settings: SettingsDep) -> TaskOut
 
 
 @router.post("/{task_id}/pause", response_model=TaskOut)
-def pause_task(task_id: int, settings: SettingsDep) -> TaskOut:
-    return _out(_transition(settings, task_id, ("running",), "paused"))
+def pause_task(task_id: int, request: Request, settings: SettingsDep) -> TaskOut:
+    updated = _transition(settings, task_id, ("running",), "paused")
+    request.app.state.engine.submit(EngineEvent(kind="sync"))
+    return _out(updated)
 
 
 @router.post("/{task_id}/resume", response_model=TaskOut)
@@ -381,4 +383,6 @@ def stop_task(
 
     if close:
         request.app.state.engine.submit(EngineEvent(kind="stop_close", task_id=task_id, source="stop"))
+    else:
+        request.app.state.engine.submit(EngineEvent(kind="sync"))
     return _out(updated)

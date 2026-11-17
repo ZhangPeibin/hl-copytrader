@@ -42,7 +42,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ```bash
 make dev          # API 127.0.0.1:8090 + Vite 127.0.0.1:5173
-make test         # pytest，207 个用例，无网络
+make test         # pytest，215 个用例，无网络
 ```
 
 ## 环境变量
@@ -57,6 +57,7 @@ make test         # pytest，207 个用例，无网络
 | `RECONCILE_INTERVAL_SEC` | `30` | 定时对账周期 |
 | `LEADER_CACHE_TTL_SEC` | `2` | leader 状态缓存 TTL（代码内默认 3s，可配） |
 | `MAX_SLIPPAGE_DEFAULT` | `0.01` | 新任务默认滑点 |
+| `LOG_RETENTION_DAYS` | `30` | `exec_logs` 保留天数；`0` 表示不清理 |
 
 ## 每个 follower 钱包需要准备什么
 

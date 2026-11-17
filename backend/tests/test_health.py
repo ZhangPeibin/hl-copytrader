@@ -24,6 +24,7 @@ def make_settings(tmp_path, **overrides) -> Settings:
         reconcile_interval_sec=30,
         leader_cache_ttl_sec=Decimal("2"),
         max_slippage_default=Decimal("0.01"),
+        log_retention_days=30,
     )
     values.update(overrides)
     return Settings(**values)

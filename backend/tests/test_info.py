@@ -104,6 +104,12 @@ def make_client(transport: FakeTransport, clock: FakeClock, **kwargs) -> HlInfoC
     )
 
 
+def test_fill_backfill_has_a_realistic_weight():
+    from hlcopy.hl.info import WEIGHTS
+
+    assert WEIGHTS["userFillsByTime"] == 20
+
+
 def test_parse_meta_skips_delisted():
     meta = parse_meta(META_RAW, 1)
 

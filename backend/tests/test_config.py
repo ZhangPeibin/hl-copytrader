@@ -20,6 +20,7 @@ def test_defaults(tmp_path):
     assert settings.reconcile_interval_sec == 30
     assert str(settings.leader_cache_ttl_sec) == "2"
     assert str(settings.max_slippage_default) == "0.01"
+    assert settings.log_retention_days == 30
 
 
 def test_missing_key_fails_with_generation_hint(tmp_path):
@@ -65,3 +66,13 @@ def test_bad_numeric_rejected(tmp_path):
                 "RECONCILE_INTERVAL_SEC": "0",
             }
         )
+
+
+def test_log_retention_days_validation(tmp_path):
+    base = {"HL_SECRET_ENC_KEY": fernet_key(), "DATA_DIR": str(tmp_path)}
+
+    assert load_settings({**base, "LOG_RETENTION_DAYS": "0"}).log_retention_days == 0
+    with pytest.raises(ConfigError, match="LOG_RETENTION_DAYS"):
+        load_settings({**base, "LOG_RETENTION_DAYS": "-1"})
+    with pytest.raises(ConfigError, match="LOG_RETENTION_DAYS"):
+        load_settings({**base, "LOG_RETENTION_DAYS": "many"})

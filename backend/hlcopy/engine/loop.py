@@ -75,6 +75,7 @@ class Engine:
         self._thread: threading.Thread | None = None
         self.ws = ws
         self._pending_fills: set[tuple[str, str]] = set()
+        self._last_prune_ms = 0
         self._pending_lock = threading.Lock()
 
     def start(self) -> None:
@@ -147,6 +148,7 @@ class Engine:
         try:
             if event.kind == "stop_close" and event.task_id is not None:
                 self.close_task(event.task_id)
+                self.sync_subscriptions()
             elif event.kind == "fill" and event.leader and event.coin:
                 self.apply_fill(
                     event.leader,
@@ -154,6 +156,9 @@ class Engine:
                 )
             elif event.kind == "command" and event.task_id is not None:
                 self.reconcile_task(event.task_id, source=event.source)
+                self.sync_subscriptions()
+            elif event.kind == "sync":
+                self.sync_subscriptions()
             elif event.kind == "tick":
                 self.reconcile_all(source="reconcile")
         finally:
@@ -172,6 +177,26 @@ class Engine:
                 task.id, source="fill", fill_time_ms=fill.ts, coin_hint=fill.coin
             )
 
+    def _prune_logs(self) -> None:
+        days = self.settings.log_retention_days
+        if days <= 0:
+            return
+        now_ms = self._clock_ms()
+        if now_ms - self._last_prune_ms < 86_400_000:
+            return
+        self._last_prune_ms = now_ms
+        with db.session(self.settings.db_path) as conn:
+            removed = db.prune_exec_logs(conn, now_ms - days * 86_400_000)
+        if removed:
+            log.info("pruned %s old exec_logs rows", removed)
+
+    def sync_subscriptions(self) -> None:
+        if self.ws is None:
+            return
+        with db.session(self.settings.db_path) as conn:
+            leaders = {task.leader for task in db.list_tasks(conn) if task.status == "running"}
+        self.ws.sync(leaders)
+
     def reconcile_all(self, source: str = "reconcile") -> None:
         with db.session(self.settings.db_path) as conn:
             tasks = [task for task in db.list_tasks(conn) if task.status == "running"]
@@ -188,6 +213,7 @@ class Engine:
                 log.exception("task %s failed during %s", task_id, source)
 
         self.state.last_tick_ms = self._clock_ms()
+        self._prune_logs()
 
     def reconcile_task(
         self,

@@ -353,8 +353,8 @@ def test_lifecycle_start_pause_resume(client, engine, leader):
     assert client.post(f"/api/tasks/{task['id']}/resume").json()["status"] == "running"
     assert client.post(f"/api/tasks/{task['id']}/resume").status_code == 409
 
-    sources = [event.source for event in engine.events]
-    assert sources == ["start", "resume"]
+    assert [event.kind for event in engine.events] == ["command", "sync", "command"]
+    assert [event.source for event in engine.events] == ["start", "reconcile", "resume"]
 
 
 def test_lifecycle_stop_keeps_positions_by_default(client, engine, leader):
@@ -366,9 +366,10 @@ def test_lifecycle_stop_keeps_positions_by_default(client, engine, leader):
 
     assert response.status_code == 200
     assert response.json()["status"] == "stopped"
-    assert engine.events == []
+    assert [event.kind for event in engine.events] == ["sync"]
 
     assert client.post(f"/api/tasks/{task['id']}/start").json()["status"] == "running"
+    assert engine.events[-1].kind == "command"
     assert engine.events[-1].source == "start"
 
 

@@ -183,3 +183,170 @@ def name_taken(conn: sqlite3.Connection, name: str, exclude_id: int | None = Non
 def wallet_task_count(conn: sqlite3.Connection, wallet_id: int) -> int:
     row = conn.execute("SELECT count(*) AS n FROM tasks WHERE wallet_id = ?", (wallet_id,)).fetchone()
     return int(row["n"])
+
+
+@dataclass(frozen=True)
+class TaskRecord:
+    id: int
+    wallet_id: int
+    leader: str
+    mode: str
+    ratio: str
+    max_notional_usd: str
+    max_leverage: str
+    max_slippage: str
+    status: str
+    close_on_stop: bool
+    created_at: int
+    updated_at: int
+
+
+@dataclass(frozen=True)
+class CoinStateRecord:
+    task_id: int
+    coin: str
+    locked: bool
+    leverage_set: bool
+    next_retry_at: int | None
+    fail_count: int
+
+
+def _task(row: sqlite3.Row) -> TaskRecord:
+    return TaskRecord(
+        id=row["id"],
+        wallet_id=row["wallet_id"],
+        leader=row["leader"],
+        mode=row["mode"],
+        ratio=row["ratio"],
+        max_notional_usd=row["max_notional_usd"],
+        max_leverage=row["max_leverage"],
+        max_slippage=row["max_slippage"],
+        status=row["status"],
+        close_on_stop=bool(row["close_on_stop"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def list_tasks(conn: sqlite3.Connection, wallet_id: int | None = None) -> list[TaskRecord]:
+    if wallet_id is None:
+        rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM tasks WHERE wallet_id = ? ORDER BY id", (wallet_id,)).fetchall()
+    return [_task(row) for row in rows]
+
+
+def get_task(conn: sqlite3.Connection, task_id: int) -> TaskRecord | None:
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    return _task(row) if row else None
+
+
+def insert_task(
+    conn: sqlite3.Connection,
+    *,
+    wallet_id: int,
+    leader: str,
+    mode: str,
+    ratio: str,
+    max_notional_usd: str,
+    max_leverage: str,
+    max_slippage: str,
+    close_on_stop: bool,
+) -> int:
+    ts = now_ms()
+    cursor = conn.execute(
+        """
+        INSERT INTO tasks(
+            wallet_id, leader, mode, ratio, max_notional_usd, max_leverage, max_slippage,
+            status, close_on_stop, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)
+        """,
+        (
+            wallet_id,
+            leader,
+            mode,
+            ratio,
+            max_notional_usd,
+            max_leverage,
+            max_slippage,
+            int(close_on_stop),
+            ts,
+            ts,
+        ),
+    )
+    conn.commit()
+    return int(cursor.lastrowid)
+
+
+def update_task(
+    conn: sqlite3.Connection,
+    task_id: int,
+    *,
+    wallet_id: int,
+    leader: str,
+    mode: str,
+    ratio: str,
+    max_notional_usd: str,
+    max_leverage: str,
+    max_slippage: str,
+    close_on_stop: bool,
+) -> None:
+    conn.execute(
+        """
+        UPDATE tasks
+        SET wallet_id = ?, leader = ?, mode = ?, ratio = ?, max_notional_usd = ?,
+            max_leverage = ?, max_slippage = ?, close_on_stop = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            wallet_id,
+            leader,
+            mode,
+            ratio,
+            max_notional_usd,
+            max_leverage,
+            max_slippage,
+            int(close_on_stop),
+            now_ms(),
+            task_id,
+        ),
+    )
+    conn.commit()
+
+
+def delete_task(conn: sqlite3.Connection, task_id: int) -> None:
+    conn.execute("DELETE FROM coin_states WHERE task_id = ?", (task_id,))
+    conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+
+
+def list_coin_states(conn: sqlite3.Connection, task_id: int) -> dict[str, CoinStateRecord]:
+    rows = conn.execute("SELECT * FROM coin_states WHERE task_id = ?", (task_id,)).fetchall()
+    return {
+        row["coin"]: CoinStateRecord(
+            task_id=row["task_id"],
+            coin=row["coin"],
+            locked=bool(row["locked"]),
+            leverage_set=bool(row["leverage_set"]),
+            next_retry_at=row["next_retry_at"],
+            fail_count=row["fail_count"],
+        )
+        for row in rows
+    }
+
+
+def get_coin_state(conn: sqlite3.Connection, task_id: int, coin: str) -> CoinStateRecord | None:
+    row = conn.execute(
+        "SELECT * FROM coin_states WHERE task_id = ? AND coin = ?", (task_id, coin)
+    ).fetchone()
+    if row is None:
+        return None
+    return CoinStateRecord(
+        task_id=row["task_id"],
+        coin=row["coin"],
+        locked=bool(row["locked"]),
+        leverage_set=bool(row["leverage_set"]),
+        next_retry_at=row["next_retry_at"],
+        fail_count=row["fail_count"],
+    )

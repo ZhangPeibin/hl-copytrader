@@ -172,7 +172,8 @@ footer a {
   color: var(--muted);
 }
 
-.fields input {
+.fields input,
+.fields select {
   padding: 9px 11px;
   font-size: 14px;
   font-family: inherit;
@@ -182,7 +183,8 @@ footer a {
   border-radius: 9px;
 }
 
-.fields input:focus {
+.fields input:focus,
+.fields select:focus {
   outline: 2px solid #3b4a63;
   outline-offset: 1px;
 }
@@ -297,6 +299,16 @@ tr:last-child td {
 .badge.warn {
   color: #2b1a05;
   background: var(--warn);
+}
+
+.badge.small {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+td.strong {
+  color: #ffd479;
 }
 
 .back {

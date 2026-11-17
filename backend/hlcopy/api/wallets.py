@@ -18,6 +18,7 @@ from hlcopy.addresses import (
 from hlcopy.api.deps import SettingsDep
 from hlcopy.api.errors import fail as _fail
 from hlcopy.hl.errors import HlError
+from hlcopy.numeric import canonical
 
 router = APIRouter(prefix="/api/wallets", tags=["wallets"])
 
@@ -235,7 +236,7 @@ def delete_wallet(wallet_id: int, settings: SettingsDep) -> None:
 
 
 def _dec(value: Decimal | None) -> str | None:
-    return None if value is None else format(value, "f")
+    return None if value is None else canonical(value)
 
 
 @router.get("/{wallet_id}", response_model=WalletOut)

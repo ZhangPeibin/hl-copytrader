@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from hlcopy import db
-from hlcopy.api import health, meta, wallets
+from hlcopy.api import health, meta, tasks, wallets
 from hlcopy.config import ConfigError, Settings, load_settings
 from hlcopy.engine.state import EngineState, WsState
 from hlcopy.hl.info import HlInfoClient
@@ -74,6 +74,7 @@ def create_app(settings: Settings | None = None, *, info_client: HlInfoClient | 
     app.include_router(health.router)
     app.include_router(wallets.router)
     app.include_router(meta.router)
+    app.include_router(tasks.router)
     _mount_frontend(app, settings.static_dir)
     return app
 

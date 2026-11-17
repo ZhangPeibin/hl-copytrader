@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1240" viewBox="0 0 1920 1240">
+<defs>
+<filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="1920" height="1240"><feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+<marker id="ah-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1e1e1e"/></marker>
+<marker id="ah-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ffd8a8"/></marker>
+<marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b2f2bb"/></marker>
+<marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d0bfff"/></marker>
+</defs>
+<rect width="1920" height="1240" fill="#fdfdf7"/>
+<rect x="340" y="140" width="470" height="86" rx="12" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="575.0" y="172.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="575.0" dy="0">leader userFills over /ws</tspan><tspan x="575.0" dy="20.8">WsListener thread · one conn per leader</tspan></text>
+<rect x="840" y="140" width="470" height="86" rx="12" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1075.0" y="172.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1075.0" dy="0">30s reconcile tick</tspan><tspan x="1075.0" dy="20.8">TickEvent · safety net</tspan></text>
+<rect x="1340" y="140" width="470" height="86" rx="12" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1575.0" y="172.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1575.0" dy="0">UI command</tspan><tspan x="1575.0" dy="20.8">start / pause / param / stop</tspan></text>
+<rect x="340" y="290" width="1470" height="76" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1075.0" y="317.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1075.0" dy="0">Engine in-queue — FillEvent / TickEvent / CommandEvent</tspan><tspan x="1075.0" dy="20.8">dedup key: task_id:coin</tspan></text>
+<rect x="340" y="420" width="1100" height="680" rx="12" fill="none" stroke="#1e1e1e" stroke-dasharray="9 9" stroke-width="2.5" filter="url(#wobble)"/>
+<rect x="410" y="515" width="220" height="90" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="520.0" y="549.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="520.0" dy="0">1 · dequeue</tspan><tspan x="520.0" dy="20.8">dedup by task_id:coin</tspan></text>
+<rect x="1130" y="515" width="220" height="90" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1240.0" y="549.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1240.0" dy="0">2 · read fresh state</tspan><tspan x="1240.0" dy="20.8">leader + follower via /info</tspan></text>
+<rect x="1130" y="655" width="220" height="90" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1240.0" y="689.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1240.0" dy="0">3 · plan (pure)</tspan><tspan x="1240.0" dy="20.8">target → Δ → one action</tspan></text>
+<rect x="1130" y="795" width="220" height="90" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1240.0" y="829.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1240.0" dy="0">4 · set leverage</tspan><tspan x="1240.0" dy="20.8">first entry per coin</tspan></text>
+<rect x="1130" y="935" width="220" height="90" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1240.0" y="969.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1240.0" dy="0">5 · place IOC</tspan><tspan x="1240.0" dy="20.8">reduceOnly when reducing</tspan></text>
+<rect x="410" y="935" width="220" height="90" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="520.0" y="969.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="16" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="520.0" dy="0">6 · write exec_logs</tspan><tspan x="520.0" dy="20.8">result · reason · raw</tspan></text>
+<rect x="710" y="650" width="380" height="200" rx="12" fill="#fff3bf" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="900.0" y="713.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="14" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="900.0" dy="0">decision order (planner)</tspan><tspan x="900.0" dy="18.2">T=0 &amp; F≠0 → close |F|, not Δ</tspan><tspan x="900.0" dy="18.2">|Δ|·mark &lt; $10 → skip</tspan><tspan x="900.0" dy="18.2">sign flip → close, then open</tspan><tspan x="900.0" dy="18.2">leader read failure → skip, never flat</tspan></text>
+<rect x="1600" y="490" width="290" height="560" rx="12" fill="none" stroke="#1e1e1e" stroke-dasharray="9 9" stroke-width="2.5" filter="url(#wobble)"/>
+<rect x="1620" y="515" width="250" height="86" rx="12" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1745.0" y="548.2" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1745.0" dy="0">/info</tspan><tspan x="1745.0" dy="19.5">meta 60s · mids 1s · state 3s</tspan></text>
+<rect x="1620" y="700" width="250" height="86" rx="12" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1745.0" y="733.2" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1745.0" dy="0">/exchange</tspan><tspan x="1745.0" dy="19.5">EIP-712 · nonce · cloid</tspan></text>
+<rect x="1620" y="885" width="250" height="86" rx="12" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="1745.0" y="918.2" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="1745.0" dy="0">/ws</tspan><tspan x="1745.0" dy="19.5">userFills + backfill</tspan></text>
+<rect x="40" y="790" width="270" height="250" rx="12" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="175.0" y="856.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="175.0" dy="0">SQLite /data/app.db</tspan><tspan x="175.0" dy="19.5">WAL · single writer</tspan><tspan x="175.0" dy="19.5"></tspan><tspan x="175.0" dy="19.5">wallets · secret_enc</tspan><tspan x="175.0" dy="19.5">tasks · Decimal TEXT</tspan><tspan x="175.0" dy="19.5">coin_states · lock/retry</tspan><tspan x="175.0" dy="19.5">exec_logs · append-only</tspan></text>
+<rect x="40" y="430" width="270" height="300" rx="12" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2.5" stroke-dasharray="9 9" filter="url(#wobble)"/>
+<text x="175.0" y="531.2" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="middle" dominant-baseline="middle"><tspan x="175.0" dy="0">Read path</tspan><tspan x="175.0" dy="19.5">not in the loop</tspan><tspan x="175.0" dy="19.5"></tspan><tspan x="175.0" dy="19.5">Browser → API routes</tspan><tspan x="175.0" dy="19.5">→ SQLite reads</tspan><tspan x="175.0" dy="19.5">→ /info cache (3s)</tspan></text>
+<rect x="340" y="1142" width="14" height="14" rx="12" fill="#a5d8ff" stroke-width="2.5" filter="url(#wobble)"/>
+<rect x="500" y="1142" width="14" height="14" rx="12" fill="#ffd8a8" stroke-width="2.5" filter="url(#wobble)"/>
+<rect x="660" y="1142" width="14" height="14" rx="12" fill="#b2f2bb" stroke-width="2.5" filter="url(#wobble)"/>
+<rect x="810" y="1142" width="14" height="14" rx="12" fill="#d0bfff" stroke-width="2.5" filter="url(#wobble)"/>
+<text x="60" y="57.0" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="30" fill="#1e1e1e" text-anchor="start"><tspan x="60" dy="0">HL Copytrader — order flow &amp; engine loop</tspan></text>
+<text x="60" y="89.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#495057" text-anchor="start"><tspan x="60" dy="0">one process · one serial loop · one SQLite writer · order path target &lt; 10s · 30s safety net</tspan></text>
+<text x="365" y="449.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#495057" text-anchor="start"><tspan x="365" dy="0">EngineLoop — single thread · serial · sole order placer</tspan></text>
+<text x="1600" y="472.2" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="18" fill="#1e1e1e" text-anchor="start"><tspan x="1600" dy="0">Hyperliquid</tspan></text>
+<text x="362" y="1149.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="start"><tspan x="362" dy="0">our process</tspan></text>
+<text x="522" y="1149.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="start"><tspan x="522" dy="0">Hyperliquid</tspan></text>
+<text x="682" y="1149.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="start"><tspan x="682" dy="0">storage</tspan></text>
+<text x="832" y="1149.5" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="15" fill="#1e1e1e" text-anchor="start"><tspan x="832" dy="0">trigger</tspan></text>
+<text x="340" y="1186.6" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="14" fill="#495057" text-anchor="start"><tspan x="340" dy="0">invariants · single writer · one order path · Decimal only · failed leader read ≠ flat · reversal = 2 orders</tspan></text>
+<text x="795" y="543.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="795" dy="0">read fresh state</tspan></text>
+<text x="810" y="997.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="810" dy="0">log result</tspan></text>
+<text x="532" y="753.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="532" dy="0">loop · next event</tspan><tspan x="532" dy="17.6">state is re-read every round</tspan></text>
+<text x="1455" y="541.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="1455" dy="0">read</tspan></text>
+<text x="1454" y="811.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="1454" dy="0">setLeverage</tspan></text>
+<text x="1460" y="913.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="1460" dy="0">IOC order</tspan></text>
+<text x="346" y="939.7" font-family="Chalkboard SE, Bradley Hand, Segoe Print, Comic Sans MS, cursive" font-size="13" fill="#495057" text-anchor="start"><tspan x="346" dy="0">write</tspan></text>
+<path d="M 575 226 L 575 290" fill="none" stroke="#d0bfff" stroke-width="2.5" marker-end="url(#ah-purple)" filter="url(#wobble)"/>
+<path d="M 1075 226 L 1075 290" fill="none" stroke="#d0bfff" stroke-width="2.5" marker-end="url(#ah-purple)" filter="url(#wobble)"/>
+<path d="M 1575 226 L 1575 290" fill="none" stroke="#d0bfff" stroke-width="2.5" marker-end="url(#ah-purple)" filter="url(#wobble)"/>
+<path d="M 575 366 L 575 515" fill="none" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 630 560 L 1120 560" fill="none" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 1240 605 L 1240 655" fill="none" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 1240 745 L 1240 795" fill="none" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 1240 885 L 1240 935" fill="none" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 1120 980 L 630 980" fill="none" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 520 935 L 520 605" fill="none" stroke="#1e1e1e" stroke-width="3.5" marker-end="url(#ah-ink)" filter="url(#wobble)"/>
+<path d="M 1350 560 L 1600 558" fill="none" stroke="#ffd8a8" stroke-width="2.5" marker-end="url(#ah-orange)" filter="url(#wobble)"/>
+<path d="M 1350 840 L 1600 745" fill="none" stroke="#ffd8a8" stroke-width="2.5" marker-end="url(#ah-orange)" filter="url(#wobble)"/>
+<path d="M 1350 975 L 1600 790" fill="none" stroke="#ffd8a8" stroke-width="2.5" marker-end="url(#ah-orange)" filter="url(#wobble)"/>
+<path d="M 410 980 L 310 950" fill="none" stroke="#b2f2bb" stroke-width="2.5" marker-end="url(#ah-green)" filter="url(#wobble)"/>
+</svg>

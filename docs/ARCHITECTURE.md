@@ -8,6 +8,16 @@
 
 ---
 
+## 0. 总览图：下单流与引擎循环
+
+![order flow and engine loop](diagrams/architecture.svg)
+
+- 可编辑源：`docs/diagrams/architecture.excalidraw`（拖入 [excalidraw.com](https://excalidraw.com) 或 VS Code Excalidraw 插件）
+- 生成脚本：`scripts/make_architecture_diagram.py`，同时产出 SVG 与 excalidraw 场景，两者几何一致
+- 图中编号 1→6 即一次下单的完整路径；粗箭头是循环回边，表示下一轮重新读取全部状态
+
+---
+
 ## 1. 部署与进程拓扑
 
 一个 Docker 服务、一个 uvicorn worker、三种并发单元（HTTP 请求处理、引擎线程、每个 leader 一个 WS 线程）。

@@ -51,6 +51,7 @@ class CoinMeta:
     name: str
     sz_decimals: int
     max_leverage: int
+    asset_index: int
 
 
 @dataclass(frozen=True)
@@ -116,7 +117,7 @@ def parse_meta(raw: Any, fetched_at_ms: int) -> Meta:
     if not isinstance(universe, list):
         raise HlError("meta payload has no universe", code="hl_bad_payload")
     coins: list[CoinMeta] = []
-    for entry in universe:
+    for index, entry in enumerate(universe):
         if not isinstance(entry, dict) or "name" not in entry:
             continue
         if entry.get("isDelisted"):
@@ -126,6 +127,7 @@ def parse_meta(raw: Any, fetched_at_ms: int) -> Meta:
                 name=str(entry["name"]),
                 sz_decimals=int(entry.get("szDecimals", 0)),
                 max_leverage=int(entry.get("maxLeverage", 1)),
+                asset_index=index,
             )
         )
     return Meta(coins=tuple(coins), fetched_at_ms=fetched_at_ms)

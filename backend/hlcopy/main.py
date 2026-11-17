@@ -14,6 +14,7 @@ from hlcopy import db
 from hlcopy.api import health, meta, tasks, wallets
 from hlcopy.config import ConfigError, Settings, load_settings
 from hlcopy.engine.state import EngineState, WsState
+from hlcopy.masking import install_masking
 from hlcopy.hl.info import HlInfoClient
 from hlcopy.security import BasicSessionMiddleware
 
@@ -42,6 +43,8 @@ def create_app(settings: Settings | None = None, *, info_client: HlInfoClient | 
         level=settings.log_level,
         format='{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":%(message)r}',
     )
+
+    install_masking()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

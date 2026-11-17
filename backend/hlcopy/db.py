@@ -159,6 +159,16 @@ def update_wallet(
     conn.commit()
 
 
+def set_key_state(conn: sqlite3.Connection, wallet_id: int, state: str) -> None:
+    if state not in ("ok", "unreadable"):
+        raise ValueError(f"unknown key state {state!r}")
+    conn.execute(
+        "UPDATE wallets SET key_state = ?, updated_at = ? WHERE id = ?",
+        (state, now_ms(), wallet_id),
+    )
+    conn.commit()
+
+
 def delete_wallet(conn: sqlite3.Connection, wallet_id: int) -> None:
     conn.execute("DELETE FROM wallets WHERE id = ?", (wallet_id,))
     conn.commit()

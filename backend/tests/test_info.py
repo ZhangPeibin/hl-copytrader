@@ -110,6 +110,7 @@ def test_parse_meta_skips_delisted():
     assert [coin.name for coin in meta.coins] == ["BTC", "ETH", "SOL"]
     assert meta.coins[0].sz_decimals == 5
     assert meta.coins[2].max_leverage == 20
+    assert [coin.asset_index for coin in meta.coins] == [0, 1, 3]
     assert meta.fetched_at_ms == 1
 
 

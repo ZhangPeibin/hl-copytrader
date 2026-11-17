@@ -36,7 +36,7 @@ Implementation tasks use isolated worktrees under `.worktrees/<task-slug>`. See 
 - `backend/tests/` — pytest
 - `frontend/` — React 18 + Vite + TS, build output statically mounted by FastAPI
 - `docs/PLAN.md` — authoritative design
-- `scripts/probe.py` — planned: capture real HL error strings (needs testnet credentials)
+- `scripts/probe.py` — captures real HL error strings (needs testnet API wallet credentials)
 
 ### Commands
 

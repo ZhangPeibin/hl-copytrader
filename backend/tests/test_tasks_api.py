@@ -51,8 +51,8 @@ class FakeInfo:
             raise HlError("upstream unavailable")
         return Meta(
             coins=(
-                CoinMeta(name="BTC", sz_decimals=3, max_leverage=20),
-                CoinMeta(name="ETH", sz_decimals=4, max_leverage=25),
+                CoinMeta(name="BTC", sz_decimals=3, max_leverage=20, asset_index=0),
+                CoinMeta(name="ETH", sz_decimals=4, max_leverage=25, asset_index=1),
             ),
             fetched_at_ms=1_700_000_000_000,
         )

@@ -5,12 +5,13 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from hlcopy import db
-from hlcopy.api import health
+from hlcopy.api import health, wallets
 from hlcopy.config import ConfigError, Settings, load_settings
 from hlcopy.engine.state import EngineState, WsState
 from hlcopy.security import BasicSessionMiddleware
@@ -61,7 +62,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secret_enc_key=settings.secret_enc_key,
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": {"code": "invalid_request", "message": "request body is invalid"}},
+        )
+
     app.include_router(health.router)
+    app.include_router(wallets.router)
     _mount_frontend(app, settings.static_dir)
     return app
 

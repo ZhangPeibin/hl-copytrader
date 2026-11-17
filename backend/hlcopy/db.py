@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 SCHEMA = """
@@ -40,8 +44,13 @@ CREATE INDEX IF NOT EXISTS idx_logs_ts ON exec_logs(ts DESC);
 """
 
 
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=5.0)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
@@ -49,17 +58,128 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def session(db_path: Path) -> Iterator[sqlite3.Connection]:
+    conn = connect(db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with connect(db_path) as conn:
+    with session(db_path) as conn:
         conn.executescript(SCHEMA)
         conn.commit()
 
 
 def check(db_path: Path) -> bool:
     try:
-        with connect(db_path) as conn:
+        with session(db_path) as conn:
             conn.execute("SELECT 1").fetchone()
     except sqlite3.Error:
         return False
     return True
+
+
+@dataclass(frozen=True)
+class WalletRecord:
+    id: int
+    name: str
+    address: str
+    api_wallet_address: str
+    secret_enc: bytes
+    key_state: str
+    created_at: int
+    updated_at: int
+
+
+def _wallet(row: sqlite3.Row) -> WalletRecord:
+    return WalletRecord(
+        id=row["id"],
+        name=row["name"],
+        address=row["address"],
+        api_wallet_address=row["api_wallet_address"],
+        secret_enc=row["secret_enc"],
+        key_state=row["key_state"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def list_wallets(conn: sqlite3.Connection) -> list[WalletRecord]:
+    rows = conn.execute("SELECT * FROM wallets ORDER BY id").fetchall()
+    return [_wallet(row) for row in rows]
+
+
+def get_wallet(conn: sqlite3.Connection, wallet_id: int) -> WalletRecord | None:
+    row = conn.execute("SELECT * FROM wallets WHERE id = ?", (wallet_id,)).fetchone()
+    return _wallet(row) if row else None
+
+
+def insert_wallet(
+    conn: sqlite3.Connection,
+    *,
+    name: str,
+    address: str,
+    api_wallet_address: str,
+    secret_enc: bytes,
+) -> int:
+    ts = now_ms()
+    cursor = conn.execute(
+        """
+        INSERT INTO wallets(name, address, api_wallet_address, secret_enc, key_state, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'ok', ?, ?)
+        """,
+        (name, address, api_wallet_address, secret_enc, ts, ts),
+    )
+    conn.commit()
+    return int(cursor.lastrowid)
+
+
+def update_wallet(
+    conn: sqlite3.Connection,
+    wallet_id: int,
+    *,
+    name: str,
+    address: str,
+    api_wallet_address: str,
+    secret_enc: bytes,
+    key_state: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE wallets
+        SET name = ?, address = ?, api_wallet_address = ?, secret_enc = ?, key_state = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (name, address, api_wallet_address, secret_enc, key_state, now_ms(), wallet_id),
+    )
+    conn.commit()
+
+
+def delete_wallet(conn: sqlite3.Connection, wallet_id: int) -> None:
+    conn.execute("DELETE FROM wallets WHERE id = ?", (wallet_id,))
+    conn.commit()
+
+
+def address_taken(conn: sqlite3.Connection, address: str, exclude_id: int | None = None) -> bool:
+    row = conn.execute(
+        "SELECT id FROM wallets WHERE lower(address) = lower(?) AND id IS NOT ?",
+        (address, exclude_id),
+    ).fetchone()
+    return row is not None
+
+
+def name_taken(conn: sqlite3.Connection, name: str, exclude_id: int | None = None) -> bool:
+    row = conn.execute(
+        "SELECT id FROM wallets WHERE name = ? AND id IS NOT ?",
+        (name, exclude_id),
+    ).fetchone()
+    return row is not None
+
+
+def wallet_task_count(conn: sqlite3.Connection, wallet_id: int) -> int:
+    row = conn.execute("SELECT count(*) AS n FROM tasks WHERE wallet_id = ?", (wallet_id,)).fetchone()
+    return int(row["n"])

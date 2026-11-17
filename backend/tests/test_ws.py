@@ -75,17 +75,20 @@ def test_ws_manager_syncs_subscriptions():
     )
 
     manager.sync({"0xAAA", "0xBBB"})
-    assert [watcher.leader for watcher in created] == ["0xaaa", "0xbbb"]
+    assert {watcher.leader for watcher in created} == {"0xaaa", "0xbbb"}
     assert all(watcher.started for watcher in created)
     assert manager.state.subscriptions == 2
     assert manager.state.connected is True
 
+    watcher_a = next(watcher for watcher in created if watcher.leader == "0xaaa")
+    watcher_b = next(watcher for watcher in created if watcher.leader == "0xbbb")
+
     manager.sync({"0xAAA"})
-    assert created[1].stopped is True
+    assert watcher_b.stopped is True
     assert manager.state.subscriptions == 1
 
     manager.sync(set())
-    assert created[0].stopped is True
+    assert watcher_a.stopped is True
     assert manager.state.subscriptions == 0
     assert manager.state.connected is False
 

@@ -10,7 +10,13 @@ from typing import Callable
 
 from hlcopy import db
 from hlcopy.config import Settings
-from hlcopy.engine.executor import ExecutionContext, execute_action, log_skip
+from hlcopy.engine.executor import (
+    ExecutionContext,
+    cloid_for,
+    execute_action,
+    limit_price,
+    log_skip,
+)
 from hlcopy.engine.planner import plan
 from hlcopy.engine.state import EngineState
 from hlcopy.engine.types import PlanInput
@@ -139,7 +145,9 @@ class Engine:
 
     def _handle(self, event: EngineEvent) -> None:
         try:
-            if event.kind == "fill" and event.leader and event.coin:
+            if event.kind == "stop_close" and event.task_id is not None:
+                self.close_task(event.task_id)
+            elif event.kind == "fill" and event.leader and event.coin:
                 self.apply_fill(
                     event.leader,
                     Fill(coin=event.coin, ts=event.fill_time_ms or 0),
@@ -344,3 +352,87 @@ class Engine:
                 execute_action(conn, exchange, ctx, action)
             elif action.reason != "backoff":
                 log_skip(conn, ctx, action)
+
+
+    def close_task(self, task_id: int) -> None:
+        with db.session(self.settings.db_path) as conn:
+            task = db.get_task(conn, task_id)
+            if task is None:
+                return
+            wallet = db.get_wallet(conn, task.wallet_id)
+            if wallet is None or wallet.key_state != "ok":
+                return
+            try:
+                exchange = self._exchange_factory(wallet)
+            except (SecretUnreadable, WalletKeyMismatch) as exc:
+                log.warning("wallet %s key cannot be used: %s", wallet.id, exc)
+                db.set_key_state(conn, wallet.id, "unreadable")
+                return
+
+            now_ms = self._clock_ms()
+            try:
+                meta = self.info.meta()
+                mids = self.info.all_mids()
+                follower = self.info.account(wallet.address)
+            except HlError as exc:
+                db.insert_exec_log(
+                    conn,
+                    task_id=task.id,
+                    wallet_id=wallet.id,
+                    ts=now_ms,
+                    source="stop",
+                    coin=UNKNOWN_COIN,
+                    result="skipped",
+                    reason="leader_state_unavailable",
+                    raw=mask_secrets(exc.message),
+                )
+                return
+
+            coins = {coin.name: coin for coin in meta.coins}
+            slippage = Decimal(task.max_slippage)
+
+            for position in follower.positions:
+                coin_meta = coins.get(position.coin)
+                if coin_meta is None or position.size == 0:
+                    continue
+                for order in follower.open_orders:
+                    if order.coin == position.coin:
+                        exchange.cancel(asset=coin_meta.asset_index, oid=order.oid)
+                mark_px = mids.get(position.coin)
+                if mark_px is None:
+                    continue
+                side = "sell" if position.size > 0 else "buy"
+                try:
+                    price = limit_price(mark_px, slippage, side, coin_meta.sz_decimals)
+                except Exception as exc:
+                    log.warning("cannot price close for %s: %s", position.coin, exc)
+                    continue
+                cloid = cloid_for(task.id, position.coin, Decimal(0), 0)
+                response = exchange.place_ioc(
+                    asset=coin_meta.asset_index,
+                    is_buy=side == "buy",
+                    size=abs(position.size),
+                    price=price,
+                    reduce_only=True,
+                    cloid=cloid,
+                )
+                ok = response.ok or response.duplicate
+                db.insert_exec_log(
+                    conn,
+                    task_id=task.id,
+                    wallet_id=wallet.id,
+                    ts=now_ms,
+                    source="stop",
+                    coin=position.coin,
+                    leader_pos=None,
+                    pos_before=canonical(position.size),
+                    target="0",
+                    side=side,
+                    qty=canonical(abs(position.size)),
+                    price=canonical(price),
+                    result="filled" if ok else "failed",
+                    reason="close_all",
+                    oid=str(response.oid) if response.oid is not None else None,
+                    cloid=cloid,
+                    raw=None if ok else mask_secrets(response.error or "")[:2000],
+                )

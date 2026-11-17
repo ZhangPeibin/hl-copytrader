@@ -48,6 +48,7 @@ class FakeInfo:
         self.fail_accounts = fail_accounts
         self.fail_for: set[str] = set()
         self.positions_extra: list[Position] = []
+        self.order_book: list = []
 
     def meta(self) -> Meta:
         return Meta(
@@ -66,7 +67,16 @@ class FakeInfo:
             raise HlError("leader state unavailable")
         if address.lower() == self.leader.lower():
             return snapshot(address, [*self.leader_positions, *self.positions_extra])
-        return snapshot(address, self.follower_positions)
+        follower = snapshot(address, self.follower_positions)
+        return AccountSnapshot(
+            address=follower.address,
+            account_value=follower.account_value,
+            withdrawable=follower.withdrawable,
+            margin_used=follower.margin_used,
+            positions=follower.positions,
+            open_orders=tuple(self.order_book),
+            fetched_at_ms=follower.fetched_at_ms,
+        )
 
 
 class FakeExchange:
@@ -81,6 +91,10 @@ class FakeExchange:
     def place_ioc(self, **kwargs) -> ExchangeResponse:
         self.calls.append(("order", kwargs))
         return self.order_response
+
+    def cancel(self, **kwargs) -> ExchangeResponse:
+        self.calls.append(("cancel", kwargs))
+        return ExchangeResponse(ok=True, raw={})
 
 
 @pytest.fixture
@@ -698,3 +712,44 @@ def test_fill_that_reduces_does_not_unlock(settings):
     with db.session(settings.db_path) as conn:
         assert db.get_coin_state(conn, task.id, "BTC").locked is True
     assert exchange.calls == []
+
+
+def test_close_task_cancels_orders_and_closes_positions(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [], [position("BTC", "2")])
+    info.order_book = [
+        type("Order", (), {"coin": "BTC", "oid": 11})(),
+        type("Order", (), {"coin": "ETH", "oid": 12})(),
+    ]
+    exchange = FakeExchange()
+    engine = make_engine(settings, info, exchange)
+
+    engine.close_task(1)
+
+    cancels = [call[1] for call in exchange.calls if call[0] == "cancel"]
+    assert cancels == [{"asset": 0, "oid": 11}]
+    orders = [call[1] for call in exchange.calls if call[0] == "order"]
+    assert len(orders) == 1
+    assert orders[0]["is_buy"] is False
+    assert orders[0]["size"] == Decimal("2")
+    assert orders[0]["reduce_only"] is True
+
+    row = logs(settings)[0]
+    assert row["source"] == "stop"
+    assert row["reason"] == "close_all"
+    assert row["result"] == "filled"
+
+
+def test_close_task_skips_flat_positions(settings):
+    wallet = add_wallet(settings)
+    leader = Account.create().address
+    add_task(settings, wallet, leader)
+    info = FakeInfo(leader, [], [])
+    exchange = FakeExchange()
+
+    make_engine(settings, info, exchange).close_task(1)
+
+    assert exchange.calls == []
+    assert logs(settings) == []

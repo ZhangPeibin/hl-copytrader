@@ -34,6 +34,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   invalid_max_slippage: "滑点需在 0 到 0.1 之间",
   invalid_max_leverage: "杠杆需在 1 到 100 之间",
   invalid_leader: "leader 地址格式错误",
+  invalid_transition: "当前状态不允许该操作",
 };
 
 export class ApiError extends Error {
@@ -286,4 +287,23 @@ export function fetchLogs(filters: LogFilters): Promise<LogsPage> {
   params.set("limit", String(filters.limit ?? 50));
   params.set("offset", String(filters.offset ?? 0));
   return request<LogsPage>(`/api/logs?${params.toString()}`);
+}
+
+export function startTask(id: number): Promise<Task> {
+  return request<Task>(`/api/tasks/${id}/start`, { method: "POST" });
+}
+
+export function pauseTask(id: number): Promise<Task> {
+  return request<Task>(`/api/tasks/${id}/pause`, { method: "POST" });
+}
+
+export function resumeTask(id: number): Promise<Task> {
+  return request<Task>(`/api/tasks/${id}/resume`, { method: "POST" });
+}
+
+export function stopTask(id: number, closePositions: boolean): Promise<Task> {
+  return request<Task>(`/api/tasks/${id}/stop`, {
+    method: "POST",
+    body: JSON.stringify({ close_positions: closePositions }),
+  });
 }

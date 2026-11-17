@@ -111,14 +111,50 @@ def fake_info(leader):
     return FakeInfo(leader, leader_positions=[position("BTC", "1")])
 
 
+class RecordingEngine:
+    def __init__(self) -> None:
+        from hlcopy.engine.state import EngineState
+
+        self.state = EngineState()
+        self.events = []
+
+    def attach_ws(self, ws) -> None:
+        self.ws = ws
+
+    def submit(self, event) -> None:
+        self.events.append(event)
+
+    def reconcile_all(self, source="reconcile") -> None:
+        pass
+
+    def submit_fill(self, leader, fill) -> bool:
+        return False
+
+    def close_task(self, task_id: int) -> None:
+        pass
+
+    def start(self) -> None:
+        self.state.running = True
+
+    def stop(self) -> None:
+        self.state.running = False
+
+
 @pytest.fixture
 def settings(tmp_path):
     return make_settings(tmp_path)
 
 
 @pytest.fixture
-def client(settings, fake_info):
-    with TestClient(create_app(settings, info_client=fake_info, start_engine=False)) as test_client:
+def engine():
+    return RecordingEngine()
+
+
+@pytest.fixture
+def client(settings, fake_info, engine):
+    with TestClient(
+        create_app(settings, info_client=fake_info, engine=engine, start_engine=False)
+    ) as test_client:
         yield test_client
 
 
@@ -293,3 +329,79 @@ def test_compare_upstream_failure(tmp_path, leader):
 
     assert response.status_code == 502
     assert response.json()["detail"]["code"] == "hl_unavailable"
+
+
+def test_lifecycle_start_pause_resume(client, engine, leader):
+    wallet = new_wallet(client)
+    task = client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
+    assert task["status"] == "running"
+
+    assert client.post(f"/api/tasks/{task['id']}/start").status_code == 409
+    assert client.post(f"/api/tasks/{task['id']}/pause").json()["status"] == "paused"
+    assert client.post(f"/api/tasks/{task['id']}/pause").status_code == 409
+    assert client.post(f"/api/tasks/{task['id']}/resume").json()["status"] == "running"
+    assert client.post(f"/api/tasks/{task['id']}/resume").status_code == 409
+
+    sources = [event.source for event in engine.events]
+    assert sources == ["start", "resume"]
+
+
+def test_lifecycle_stop_keeps_positions_by_default(client, engine, leader):
+    wallet = new_wallet(client)
+    task = client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
+    engine.events.clear()
+
+    response = client.post(f"/api/tasks/{task['id']}/stop", json={})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "stopped"
+    assert engine.events == []
+
+    assert client.post(f"/api/tasks/{task['id']}/start").json()["status"] == "running"
+    assert engine.events[-1].source == "start"
+
+
+def test_lifecycle_stop_with_close_submits_close_event(client, engine, leader):
+    wallet = new_wallet(client)
+    task = client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
+    engine.events.clear()
+
+    response = client.post(
+        f"/api/tasks/{task['id']}/stop", json={"close_positions": True}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "stopped"
+    assert len(engine.events) == 1
+    assert engine.events[0].kind == "stop_close"
+    assert engine.events[0].source == "stop"
+
+
+def test_lifecycle_stop_uses_task_close_on_stop_flag(client, engine, leader):
+    wallet = new_wallet(client)
+    task = client.post(
+        "/api/tasks", json=task_payload(wallet["id"], leader, close_on_stop=True)
+    ).json()
+    engine.events.clear()
+
+    client.post(f"/api/tasks/{task['id']}/stop", json={})
+
+    assert engine.events[0].kind == "stop_close"
+
+
+def test_lifecycle_missing_task(client):
+    assert client.post("/api/tasks/999/start").status_code == 404
+    assert client.post("/api/tasks/999/pause").status_code == 404
+    assert client.post("/api/tasks/999/resume").status_code == 404
+    assert client.post("/api/tasks/999/stop", json={}).status_code == 404
+
+
+def test_param_update_submits_command(client, engine, leader):
+    wallet = new_wallet(client)
+    task = client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
+    engine.events.clear()
+
+    client.put(f"/api/tasks/{task['id']}", json={"ratio": "0.2"})
+
+    assert len(engine.events) == 1
+    assert engine.events[0].source == "param"

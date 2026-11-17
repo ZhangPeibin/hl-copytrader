@@ -326,6 +326,16 @@ def update_task(
     conn.commit()
 
 
+def set_task_status(conn: sqlite3.Connection, task_id: int, status: str) -> None:
+    if status not in ("stopped", "running", "paused"):
+        raise ValueError(f"unknown task status {status!r}")
+    conn.execute(
+        "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
+        (status, now_ms(), task_id),
+    )
+    conn.commit()
+
+
 def delete_task(conn: sqlite3.Connection, task_id: int) -> None:
     conn.execute("DELETE FROM coin_states WHERE task_id = ?", (task_id,))
     conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))

@@ -21,7 +21,7 @@ body {
 }
 
 main {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 48px 24px 64px;
 }
@@ -397,4 +397,36 @@ details summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 12px;
+}
+
+
+.fields label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  padding-bottom: 9px;
+}
+
+.fields label.checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+
+table {
+  min-width: 960px;
+}
+
+th,
+td {
+  white-space: nowrap;
+}
+
+td.mono {
+  max-width: 170px;
+}
+
+.actions {
+  flex-wrap: nowrap;
 }

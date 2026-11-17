@@ -9,6 +9,10 @@ import {
   fetchCompare,
   fetchTasks,
   fetchWallets,
+  pauseTask,
+  resumeTask,
+  startTask,
+  stopTask,
   updateTask,
   type Compare,
   type Task,
@@ -24,6 +28,7 @@ type FormState = {
   maxNotional: string;
   maxLeverage: string;
   slippage: string;
+  closeOnStop: boolean;
 };
 
 const EMPTY: FormState = {
@@ -34,10 +39,11 @@ const EMPTY: FormState = {
   maxNotional: "1000",
   maxLeverage: "10",
   slippage: "0.01",
+  closeOnStop: false,
 };
 
 const MODE_LABELS: Record<string, string> = {
-  sync: "同步现有仓位",
+  sync: "同步",
   new_only: "只跟新单",
 };
 
@@ -119,6 +125,7 @@ export default function TasksPage() {
       maxNotional: task.max_notional_usd,
       maxLeverage: task.max_leverage,
       slippage: task.max_slippage,
+      closeOnStop: task.close_on_stop,
     });
   };
 
@@ -146,7 +153,7 @@ export default function TasksPage() {
       max_notional_usd: form.maxNotional.trim(),
       max_leverage: leverage,
       max_slippage: form.slippage.trim(),
-      close_on_stop: false,
+      close_on_stop: form.closeOnStop,
     };
 
     setBusy(true);
@@ -188,6 +195,25 @@ export default function TasksPage() {
     }
   };
 
+  const runLifecycle = async (task: Task, action: "start" | "pause" | "resume" | "stop" | "stop-close") => {
+    setError(null);
+    setNotice(null);
+    if (action === "stop-close" && !window.confirm(`停止任务 #${task.id} 并按市价平掉跟随仓位？`)) {
+      return;
+    }
+    try {
+      if (action === "start") await startTask(task.id);
+      if (action === "pause") await pauseTask(task.id);
+      if (action === "resume") await resumeTask(task.id);
+      if (action === "stop") await stopTask(task.id, false);
+      if (action === "stop-close") await stopTask(task.id, true);
+      setNotice("状态已更新");
+      await load();
+    } catch (err) {
+      setError(describeError(err));
+    }
+  };
+
   const openCompare = (taskId: number) => {
     setSearchParams({ task: String(taskId) });
     void loadCompare(taskId);
@@ -199,7 +225,7 @@ export default function TasksPage() {
     <>
       <header>
         <h1>任务</h1>
-        <p className="sub">任务创建后即处于运行状态；下单执行在后续 ticket 接入。</p>
+        <p className="sub">任务创建后即运行；暂停/停止即时生效，停止并平仓按 reduceOnly 全平。</p>
       </header>
 
       {error && <p className="error">{error}</p>}
@@ -266,6 +292,14 @@ export default function TasksPage() {
             <span>最大滑点</span>
             <input value={form.slippage} onChange={update("slippage")} inputMode="decimal" />
           </label>
+          <label className="checkbox">
+            <span>停止时默认平仓</span>
+            <input
+              type="checkbox"
+              checked={form.closeOnStop}
+              onChange={(event) => setForm((current) => ({ ...current, closeOnStop: event.target.checked }))}
+            />
+          </label>
         </div>
 
         <div className="panel-foot">
@@ -318,6 +352,31 @@ export default function TasksPage() {
                       </span>
                     </td>
                     <td className="actions">
+                      {task.status === "stopped" && (
+                        <button type="button" className="link" onClick={() => void runLifecycle(task, "start")}>
+                          启动
+                        </button>
+                      )}
+                      {task.status === "running" && (
+                        <button type="button" className="link" onClick={() => void runLifecycle(task, "pause")}>
+                          暂停
+                        </button>
+                      )}
+                      {task.status === "paused" && (
+                        <button type="button" className="link" onClick={() => void runLifecycle(task, "resume")}>
+                          恢复
+                        </button>
+                      )}
+                      {task.status !== "stopped" && (
+                        <button type="button" className="link" onClick={() => void runLifecycle(task, "stop")}>
+                          停止
+                        </button>
+                      )}
+                      {task.status !== "stopped" && (
+                        <button type="button" className="link danger" onClick={() => void runLifecycle(task, "stop-close")}>
+                          平仓
+                        </button>
+                      )}
                       <button type="button" className="link" onClick={() => openCompare(task.id)}>
                         对比
                       </button>

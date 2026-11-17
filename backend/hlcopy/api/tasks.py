@@ -48,6 +48,12 @@ class TaskUpdate(BaseModel):
     close_on_stop: bool | None = None
 
 
+class StopBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    close_positions: bool | None = None
+
+
 class TaskOut(BaseModel):
     id: int
     wallet_id: int
@@ -322,3 +328,53 @@ def compare(task_id: int, request: Request, settings: SettingsDep) -> CompareOut
         fetched_at_ms=leader_snapshot.fetched_at_ms,
         rows=rows,
     )
+
+
+def _transition(settings: SettingsDep, task_id: int, allowed: tuple[str, ...], target: str):
+    with db.session(settings.db_path) as conn:
+        task = db.get_task(conn, task_id)
+        if task is None:
+            fail(404, "task_not_found", "task does not exist")
+        if task.status not in allowed:
+            fail(409, "invalid_transition", f"cannot move a {task.status} task to {target}")
+        db.set_task_status(conn, task_id, target)
+        updated = db.get_task(conn, task_id)
+    assert updated is not None
+    return updated
+
+
+@router.post("/{task_id}/start", response_model=TaskOut)
+def start_task(task_id: int, request: Request, settings: SettingsDep) -> TaskOut:
+    updated = _transition(settings, task_id, ("stopped",), "running")
+    request.app.state.engine.submit(EngineEvent(kind="command", task_id=task_id, source="start"))
+    return _out(updated)
+
+
+@router.post("/{task_id}/pause", response_model=TaskOut)
+def pause_task(task_id: int, settings: SettingsDep) -> TaskOut:
+    return _out(_transition(settings, task_id, ("running",), "paused"))
+
+
+@router.post("/{task_id}/resume", response_model=TaskOut)
+def resume_task(task_id: int, request: Request, settings: SettingsDep) -> TaskOut:
+    updated = _transition(settings, task_id, ("paused",), "running")
+    request.app.state.engine.submit(EngineEvent(kind="command", task_id=task_id, source="resume"))
+    return _out(updated)
+
+
+@router.post("/{task_id}/stop", response_model=TaskOut)
+def stop_task(
+    task_id: int, body: StopBody, request: Request, settings: SettingsDep
+) -> TaskOut:
+    with db.session(settings.db_path) as conn:
+        task = db.get_task(conn, task_id)
+        if task is None:
+            fail(404, "task_not_found", "task does not exist")
+        close = body.close_positions if body.close_positions is not None else task.close_on_stop
+        db.set_task_status(conn, task_id, "stopped")
+        updated = db.get_task(conn, task_id)
+    assert updated is not None
+
+    if close:
+        request.app.state.engine.submit(EngineEvent(kind="stop_close", task_id=task_id, source="stop"))
+    return _out(updated)

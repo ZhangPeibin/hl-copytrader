@@ -241,3 +241,49 @@ export function deleteTask(id: number): Promise<void> {
 export function fetchCompare(id: number): Promise<Compare> {
   return request<Compare>(`/api/tasks/${id}/compare`);
 }
+
+export type ExecLog = {
+  id: number;
+  task_id: number | null;
+  wallet_id: number | null;
+  ts: number;
+  source: string;
+  coin: string;
+  leader_pos: string | null;
+  pos_before: string | null;
+  target: string | null;
+  side: string | null;
+  qty: string | null;
+  price: string | null;
+  result: string;
+  reason: string | null;
+  latency_ms: number | null;
+  oid: string | null;
+  cloid: string | null;
+  raw: string | null;
+};
+
+export type LogsPage = {
+  items: ExecLog[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type LogFilters = {
+  task_id?: number;
+  coin?: string;
+  result?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export function fetchLogs(filters: LogFilters): Promise<LogsPage> {
+  const params = new URLSearchParams();
+  if (filters.task_id) params.set("task_id", String(filters.task_id));
+  if (filters.coin) params.set("coin", filters.coin);
+  if (filters.result) params.set("result", filters.result);
+  params.set("limit", String(filters.limit ?? 50));
+  params.set("offset", String(filters.offset ?? 0));
+  return request<LogsPage>(`/api/logs?${params.toString()}`);
+}

@@ -359,3 +359,42 @@ a.link {
   display: inline;
   font-size: 12px;
 }
+
+
+.badge.neutral {
+  color: #101216;
+  background: #b9c2d0;
+}
+
+.raw {
+  margin: 8px 0 0;
+  padding: 10px;
+  max-width: 420px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #d7c6a8;
+  background: #0d0f13;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.pager button:disabled {
+  opacity: 0.35;
+  text-decoration: none;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}

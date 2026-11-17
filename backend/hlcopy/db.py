@@ -360,3 +360,158 @@ def get_coin_state(conn: sqlite3.Connection, task_id: int, coin: str) -> CoinSta
         next_retry_at=row["next_retry_at"],
         fail_count=row["fail_count"],
     )
+
+
+def mark_leverage_set(conn: sqlite3.Connection, task_id: int, coin: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO coin_states(task_id, coin, leverage_set, last_action_at)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(task_id, coin) DO UPDATE SET leverage_set = 1, last_action_at = excluded.last_action_at
+        """,
+        (task_id, coin, now_ms()),
+    )
+    conn.commit()
+
+
+def set_last_target(conn: sqlite3.Connection, task_id: int, coin: str, target: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO coin_states(task_id, coin, last_target, last_action_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(task_id, coin) DO UPDATE
+        SET last_target = excluded.last_target, last_action_at = excluded.last_action_at
+        """,
+        (task_id, coin, target, now_ms()),
+    )
+    conn.commit()
+
+
+def record_failure(
+    conn: sqlite3.Connection,
+    task_id: int,
+    coin: str,
+    *,
+    error: str,
+    next_retry_at: int | None,
+) -> int:
+    row = conn.execute(
+        "SELECT fail_count FROM coin_states WHERE task_id = ? AND coin = ?", (task_id, coin)
+    ).fetchone()
+    fail_count = (int(row["fail_count"]) if row else 0) + 1
+    conn.execute(
+        """
+        INSERT INTO coin_states(task_id, coin, fail_count, next_retry_at, last_error, last_action_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(task_id, coin) DO UPDATE SET
+            fail_count = excluded.fail_count,
+            next_retry_at = excluded.next_retry_at,
+            last_error = excluded.last_error,
+            last_action_at = excluded.last_action_at
+        """,
+        (task_id, coin, fail_count, next_retry_at, error, now_ms()),
+    )
+    conn.commit()
+    return fail_count
+
+
+def clear_failure(conn: sqlite3.Connection, task_id: int, coin: str) -> None:
+    conn.execute(
+        """
+        UPDATE coin_states
+        SET fail_count = 0, next_retry_at = NULL, last_error = NULL
+        WHERE task_id = ? AND coin = ? AND (fail_count != 0 OR next_retry_at IS NOT NULL)
+        """,
+        (task_id, coin),
+    )
+    conn.commit()
+
+
+def insert_exec_log(
+    conn: sqlite3.Connection,
+    *,
+    task_id: int,
+    wallet_id: int,
+    ts: int,
+    source: str,
+    coin: str,
+    result: str,
+    reason: str,
+    leader_pos: str | None = None,
+    pos_before: str | None = None,
+    target: str | None = None,
+    side: str | None = None,
+    qty: str | None = None,
+    price: str | None = None,
+    latency_ms: int | None = None,
+    oid: str | None = None,
+    cloid: str | None = None,
+    raw: str | None = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO exec_logs(
+            task_id, wallet_id, ts, source, coin, leader_pos, pos_before, target,
+            side, qty, price, result, reason, latency_ms, oid, cloid, raw
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            task_id,
+            wallet_id,
+            ts,
+            source,
+            coin,
+            leader_pos,
+            pos_before,
+            target,
+            side,
+            qty,
+            price,
+            result,
+            reason,
+            latency_ms,
+            oid,
+            cloid,
+            raw,
+        ),
+    )
+    conn.commit()
+
+
+def list_exec_logs(
+    conn: sqlite3.Connection,
+    *,
+    task_id: int | None = None,
+    coin: str | None = None,
+    result: str | None = None,
+    from_ms: int | None = None,
+    to_ms: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[sqlite3.Row], int]:
+    clauses: list[str] = []
+    args: list[object] = []
+    if task_id is not None:
+        clauses.append("task_id = ?")
+        args.append(task_id)
+    if coin is not None:
+        clauses.append("coin = ?")
+        args.append(coin)
+    if result is not None:
+        clauses.append("result = ?")
+        args.append(result)
+    if from_ms is not None:
+        clauses.append("ts >= ?")
+        args.append(from_ms)
+    if to_ms is not None:
+        clauses.append("ts <= ?")
+        args.append(to_ms)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    total = int(conn.execute(f"SELECT count(*) AS n FROM exec_logs {where}", args).fetchone()["n"])
+    rows = conn.execute(
+        f"SELECT * FROM exec_logs {where} ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
+        [*args, limit, offset],
+    ).fetchall()
+    return list(rows), total

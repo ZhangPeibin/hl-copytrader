@@ -11,8 +11,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from hlcopy import db
-from hlcopy.api import health, meta, tasks, wallets
+from hlcopy.api import health, logs, meta, tasks, wallets
 from hlcopy.config import ConfigError, Settings, load_settings
+from hlcopy.engine.loop import Engine
 from hlcopy.engine.state import EngineState, WsState
 from hlcopy.masking import install_masking
 from hlcopy.hl.info import HlInfoClient
@@ -31,7 +32,13 @@ or use <code>make dev</code>.</p>
 """
 
 
-def create_app(settings: Settings | None = None, *, info_client: HlInfoClient | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    info_client: HlInfoClient | None = None,
+    engine: Engine | None = None,
+    start_engine: bool = True,
+) -> FastAPI:
     if settings is None:
         try:
             settings = load_settings()
@@ -52,13 +59,19 @@ def create_app(settings: Settings | None = None, *, info_client: HlInfoClient | 
         logging.getLogger("hlcopy").info(
             "startup network=%s data_dir=%s", settings.hl_network, settings.data_dir
         )
+        if start_engine:
+            app.state.engine.start()
         yield
+        if start_engine:
+            app.state.engine.stop()
 
     app = FastAPI(title="HL Copytrader", version=VERSION, lifespan=lifespan)
     app.state.settings = settings
     app.state.engine_state = EngineState()
     app.state.ws_state = WsState()
     app.state.info = info_client or HlInfoClient(settings.hl_network)
+    app.state.engine = engine or Engine(settings, app.state.info)
+    app.state.engine_state = app.state.engine.state
 
     if settings.app_password:
         app.add_middleware(
@@ -78,6 +91,7 @@ def create_app(settings: Settings | None = None, *, info_client: HlInfoClient | 
     app.include_router(wallets.router)
     app.include_router(meta.router)
     app.include_router(tasks.router)
+    app.include_router(logs.router)
     _mount_frontend(app, settings.static_dir)
     return app
 

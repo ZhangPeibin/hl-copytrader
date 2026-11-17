@@ -118,7 +118,7 @@ def settings(tmp_path):
 
 @pytest.fixture
 def client(settings, fake_info):
-    with TestClient(create_app(settings, info_client=fake_info)) as test_client:
+    with TestClient(create_app(settings, info_client=fake_info, start_engine=False)) as test_client:
         yield test_client
 
 
@@ -230,7 +230,7 @@ def test_compare_shows_target_and_first_entry(client, leader):
 
 def test_compare_filters_coins_outside_meta(tmp_path, leader):
     fake = FakeInfo(leader, leader_positions=[position("BTC", "1"), position("XYZ", "5")])
-    with TestClient(create_app(make_settings(tmp_path), info_client=fake)) as test_client:
+    with TestClient(create_app(make_settings(tmp_path), info_client=fake, start_engine=False)) as test_client:
         wallet = new_wallet(test_client)
         task = test_client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
         rows = test_client.get(f"/api/tasks/{task['id']}/compare").json()["rows"]
@@ -256,7 +256,7 @@ def test_compare_respects_locked_state(client, settings, leader):
 
 def test_compare_closes_orphan_follower_position(tmp_path, leader):
     fake = FakeInfo(leader, leader_positions=[], follower_positions=[position("ETH", "1")])
-    with TestClient(create_app(make_settings(tmp_path), info_client=fake)) as test_client:
+    with TestClient(create_app(make_settings(tmp_path), info_client=fake, start_engine=False)) as test_client:
         wallet = new_wallet(test_client)
         task = test_client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
         rows = test_client.get(f"/api/tasks/{task['id']}/compare").json()["rows"]
@@ -285,7 +285,7 @@ def test_compare_unknown_task(client):
 
 def test_compare_upstream_failure(tmp_path, leader):
     fake = FakeInfo(leader, fail=True)
-    with TestClient(create_app(make_settings(tmp_path), info_client=fake)) as test_client:
+    with TestClient(create_app(make_settings(tmp_path), info_client=fake, start_engine=False)) as test_client:
         wallet = new_wallet(test_client)
         task = test_client.post("/api/tasks", json=task_payload(wallet["id"], leader)).json()
 

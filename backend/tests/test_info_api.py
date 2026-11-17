@@ -86,7 +86,7 @@ def fake_info():
 
 @pytest.fixture
 def client(tmp_path, fake_info):
-    with TestClient(create_app(make_settings(tmp_path), info_client=fake_info)) as test_client:
+    with TestClient(create_app(make_settings(tmp_path), info_client=fake_info, start_engine=False)) as test_client:
         yield test_client
 
 
@@ -164,7 +164,7 @@ def test_account_endpoint_requires_wallet(client):
 
 def test_upstream_failure_maps_to_502(tmp_path):
     fake = FakeInfo(fail=True)
-    with TestClient(create_app(make_settings(tmp_path), info_client=fake)) as test_client:
+    with TestClient(create_app(make_settings(tmp_path), info_client=fake, start_engine=False)) as test_client:
         wallet = add_wallet(test_client)
 
         meta_response = test_client.get("/api/meta")

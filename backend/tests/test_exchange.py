@@ -281,3 +281,27 @@ def test_set_key_state(tmp_path):
 
         with pytest.raises(ValueError):
             db.set_key_state(conn, wallet_id, "broken")
+
+
+def test_masking_filter_preserves_arg_tuple_shape():
+    import logging
+
+    from hlcopy.hl.errors import mask_secrets
+    from hlcopy.masking import MaskingFilter
+
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='%s - "%s %s" %s %s',
+        args=("127.0.0.1", "GET", "/api/logs", 200),
+        exc_info=None,
+    )
+    record.args = (*record.args, "0x" + "ab" * 32)
+
+    assert MaskingFilter().filter(record) is True
+    formatted = record.getMessage()
+    assert "0x<redacted>" in formatted
+    assert len(record.args) == 5
+    assert mask_secrets("x") == "x"

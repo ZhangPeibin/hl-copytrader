@@ -7,8 +7,17 @@ from hlcopy.hl.errors import mask_secrets
 
 class MaskingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = mask_secrets(record.getMessage())
-        record.args = ()
+        if isinstance(record.msg, str):
+            record.msg = mask_secrets(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                mask_secrets(arg) if isinstance(arg, str) else arg for arg in record.args
+            )
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: mask_secrets(value) if isinstance(value, str) else value
+                for key, value in record.args.items()
+            }
         return True
 
 

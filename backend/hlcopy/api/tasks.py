@@ -11,6 +11,7 @@ from hlcopy import db
 from hlcopy.addresses import ValidationError, normalize_address
 from hlcopy.api.deps import SettingsDep
 from hlcopy.api.errors import fail
+from hlcopy.engine.loop import EngineEvent
 from hlcopy.engine.planner import plan
 from hlcopy.engine.types import PlanInput
 from hlcopy.hl.errors import HlError
@@ -142,7 +143,7 @@ def list_tasks(settings: SettingsDep, wallet_id: int | None = None) -> list[Task
 
 
 @router.post("", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
-def create_task(payload: TaskCreate, settings: SettingsDep) -> TaskOut:
+def create_task(payload: TaskCreate, request: Request, settings: SettingsDep) -> TaskOut:
     leader = _leader(payload.leader)
     ratio = _decimal(payload.ratio, "ratio", low=Decimal(0), high=Decimal(1))
     max_notional = _decimal(payload.max_notional_usd, "max_notional_usd", low=Decimal(0), high=Decimal("1e12"))
@@ -165,6 +166,7 @@ def create_task(payload: TaskCreate, settings: SettingsDep) -> TaskOut:
         record = db.get_task(conn, task_id)
 
     assert record is not None
+    request.app.state.engine.submit(EngineEvent(kind="command", task_id=record.id, source="start"))
     return _out(record)
 
 
@@ -178,7 +180,7 @@ def get_task(task_id: int, settings: SettingsDep) -> TaskOut:
 
 
 @router.put("/{task_id}", response_model=TaskOut)
-def update_task(task_id: int, payload: TaskUpdate, settings: SettingsDep) -> TaskOut:
+def update_task(task_id: int, payload: TaskUpdate, request: Request, settings: SettingsDep) -> TaskOut:
     with db.session(settings.db_path) as conn:
         record = db.get_task(conn, task_id)
         if record is None:
@@ -227,6 +229,7 @@ def update_task(task_id: int, payload: TaskUpdate, settings: SettingsDep) -> Tas
         updated = db.get_task(conn, task_id)
 
     assert updated is not None
+    request.app.state.engine.submit(EngineEvent(kind="command", task_id=updated.id, source="param"))
     return _out(updated)
 
 

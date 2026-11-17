@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 
 import OverviewPage from "./pages/OverviewPage";
+import LogsPage from "./pages/LogsPage";
 import TasksPage from "./pages/TasksPage";
 import WalletDetailPage from "./pages/WalletDetailPage";
 import WalletsPage from "./pages/WalletsPage";
@@ -15,6 +16,7 @@ export default function App() {
         </NavLink>
         <NavLink to="/wallets">钱包</NavLink>
         <NavLink to="/tasks">任务</NavLink>
+        <NavLink to="/logs">日志</NavLink>
         <a href="/api/health" className="nav-right">
           /api/health
         </a>
@@ -25,6 +27,7 @@ export default function App() {
         <Route path="/wallets" element={<WalletsPage />} />
         <Route path="/wallets/:id" element={<WalletDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/logs" element={<LogsPage />} />
         <Route path="*" element={<p className="empty">页面不存在。</p>} />
       </Routes>
     </main>

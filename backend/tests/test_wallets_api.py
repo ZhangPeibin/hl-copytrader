@@ -19,7 +19,7 @@ def settings(tmp_path):
 
 @pytest.fixture
 def client(settings):
-    with TestClient(create_app(settings)) as test_client:
+    with TestClient(create_app(settings, start_engine=False)) as test_client:
         yield test_client
 
 

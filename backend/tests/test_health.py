@@ -34,14 +34,14 @@ def test_missing_secret_key_exits(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
 
     with pytest.raises(SystemExit) as excinfo:
-        create_app()
+        create_app(start_engine=False)
 
     assert excinfo.value.code == 2
     assert "Fernet.generate_key" in capsys.readouterr().err
 
 
 def test_health_reports_ready(tmp_path):
-    app = create_app(make_settings(tmp_path))
+    app = create_app(make_settings(tmp_path), start_engine=False)
 
     with TestClient(app) as client:
         response = client.get("/api/health")
@@ -59,7 +59,7 @@ def test_health_reports_ready(tmp_path):
 def test_startup_creates_schema_and_keeps_data(tmp_path):
     settings = make_settings(tmp_path)
 
-    with TestClient(create_app(settings)):
+    with TestClient(create_app(settings, start_engine=False)):
         pass
 
     assert settings.db_path.is_file()
@@ -73,7 +73,7 @@ def test_startup_creates_schema_and_keeps_data(tmp_path):
     assert {"wallets", "tasks", "coin_states", "exec_logs"} <= tables
     assert journal.lower() == "wal", "WAL mode must survive reconnects"
 
-    with TestClient(create_app(settings)):
+    with TestClient(create_app(settings, start_engine=False)):
         pass
 
     assert settings.db_path.is_file()
@@ -89,7 +89,7 @@ def test_db_check_reports_broken_file(tmp_path):
 
 
 def test_frontend_fallback_page(tmp_path):
-    with TestClient(create_app(make_settings(tmp_path))) as client:
+    with TestClient(create_app(make_settings(tmp_path), start_engine=False)) as client:
         response = client.get("/")
 
     assert response.status_code == 200
@@ -99,7 +99,7 @@ def test_frontend_fallback_page(tmp_path):
 def test_password_gate_uses_session_cookie(tmp_path):
     settings = make_settings(tmp_path, app_password="s3cret")
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings, start_engine=False)) as client:
         anonymous = client.get("/")
         assert anonymous.status_code == 401
         assert anonymous.headers["www-authenticate"].startswith("Basic")
@@ -113,5 +113,5 @@ def test_password_gate_uses_session_cookie(tmp_path):
 
         assert client.get("/").status_code == 200
 
-    with TestClient(create_app(settings)) as other:
+    with TestClient(create_app(settings, start_engine=False)) as other:
         assert other.get("/", auth=("app", "wrong")).status_code == 401

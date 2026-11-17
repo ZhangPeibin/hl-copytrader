@@ -27,7 +27,7 @@
 ```bash
 cp .env.example .env      # 必填 HL_SECRET_ENC_KEY
 docker compose up -d --build
-open http://127.0.0.1:8080
+open http://127.0.0.1:8090
 ```
 
 生成加密密钥：
@@ -41,7 +41,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 本地开发（不打包）：
 
 ```bash
-make dev          # API 127.0.0.1:8080 + Vite 127.0.0.1:5173
+make dev          # API 127.0.0.1:8090 + Vite 127.0.0.1:5173
 make test         # pytest，207 个用例，无网络
 ```
 

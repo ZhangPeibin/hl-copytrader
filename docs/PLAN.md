@@ -417,7 +417,7 @@ exch  = Exchange(acct, wallet=wallet.address)      # 谁签字 / 动谁的钱
 
 ### 8.7 访问控制与日志
 
-- `docker-compose.yml` 默认 `127.0.0.1:8080:8080`；同时支持可选 `APP_PASSWORD`
+- `docker-compose.yml` 默认 `127.0.0.1:8090:8090`；同时支持可选 `APP_PASSWORD`
   （HTTP Basic + session cookie）。两条都做，答辩现场从容器网络访问也不至于裸奔。
 - 结构化日志（stdout JSON）字段白名单：`wallet_id` 而非地址全量、绝不出现密钥材料。
 - `exec_logs.raw` 保存 HL 原始错误文本时同样过一遍遮罩。

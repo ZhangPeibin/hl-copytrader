@@ -47,7 +47,7 @@ Implementation tasks use isolated worktrees under `.worktrees/<task-slug>`. See 
 Run from the repo root (Makefile at the root):
 
 - `make test` — pytest pure-logic tests, no network (`cd backend && uv run --frozen pytest`)
-- `make dev` — uvicorn on `127.0.0.1:8080` plus Vite on `127.0.0.1:5173` (Vite proxies `/api`)
+- `make dev` — uvicorn on `127.0.0.1:8090` plus Vite on `127.0.0.1:5173` (Vite proxies `/api`)
 - `make up` — `docker compose up -d --build`; `make logs`, `make down`
 
 First run: `cp .env.example .env` and set `HL_SECRET_ENC_KEY` (missing key is a fatal startup error). Local dev uses `DATA_DIR=../data`, which the Makefile sets.

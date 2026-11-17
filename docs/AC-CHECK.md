@@ -8,7 +8,7 @@
 
 | AC | 要求 | 状态 | 证据 |
 | --- | --- | --- | --- |
-| AC-01 | 单服务 compose、多阶段镜像、启动建表、`/api/health` 就绪 | 环境限制 | 镜像构建成功并以 `docker run -p 18080:8080` 跑通健康检查与静态资源；本机 `127.0.0.1:8080` 被无关进程占用，`docker compose config` 已校验端口渲染为 127.0.0.1:8080 |
+| AC-01 | 单服务 compose、多阶段镜像、启动建表、`/api/health` 就绪 | 已验证 | `docker compose up -d` 后容器 8 秒内 healthy（127.0.0.1:8090）；health/index/静态资源均 200；`down` 再 `up` 后已导入钱包仍在（named volume 持久化） |
 | AC-02 | 看板直连 HL `/info`，3s 缓存，DTO 不含私钥 | 已验证 | 主网实测钱包余额/仓位；`/api/wallets/{id}/account` 数值为字符串且无密钥字段 |
 | AC-03 | `start(sync)` 立即对账并含 `updateLeverage` | 已实现，待实操 | `test_first_entry_sets_leverage_then_places_order`：先 leverage 后 order |
 | AC-04 | `start(new_only)` 把 leader 非零币种写锁定，对比页显示 | 已验证 | `test_new_only_locks_positions_at_start`、`test_compare_respects_locked_state` |
@@ -31,8 +31,7 @@
 1. **真实下单链路**：AC-03、AC-05–08 依赖已授权的 testnet API wallet 与资金。当前环境只有
    主网只读访问，因此只验证到“构造 payload + 解析响应 + 决策与日志”。
 2. **HL 错误文本**：正则基于经验值；`scripts/probe.py` 采集后需回填。
-3. **compose 端口**：本机 8080 被占用，改用镜像直跑验证同一路径；换一台空闲机器即可
-   `make up`。
+3. ~~compose 端口~~：默认端口已改为 8090，`docker compose up -d --build` 已在本机实测。
 
 ## 降级顺序（与 PLAN §11.1 一致）
 

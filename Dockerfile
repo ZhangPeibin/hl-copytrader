@@ -26,6 +26,6 @@ COPY --from=web /build/dist /app/static
 ENV STATIC_DIR=/app/static \
     DATA_DIR=/data
 
-EXPOSE 8080
+EXPOSE 8090
 
-CMD ["/app/backend/.venv/bin/uvicorn", "hlcopy.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD ["/app/backend/.venv/bin/uvicorn", "hlcopy.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090", "--workers", "1"]
